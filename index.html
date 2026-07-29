@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scrawlery — flow-field line art from any image</title>
+<style>
+  :root{--panel:#1a1b1e;--panel2:#232529;--line:#33363c;--text:#d7d9dd;--dim:#878b93;--accent:#e8c14a;--accent2:#7fb2ff;--field:#111317;}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:#0d0e10;color:var(--text);font:13px/1.4 ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;display:flex;height:100vh;overflow:hidden}
+  #panel{width:318px;flex:0 0 318px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;height:100%}
+  #panel header{padding:14px 16px 12px;border-bottom:1px solid var(--line)}
+  #panel header h1{margin:0;font-size:15px;letter-spacing:.14em;font-weight:600;text-transform:uppercase}
+  #panel header p{margin:5px 0 0;color:var(--dim);font-size:11px;letter-spacing:.03em}
+  #ctrls{overflow-y:auto;padding:6px 16px 22px;flex:1}
+  #ctrls::-webkit-scrollbar{width:10px}
+  #ctrls::-webkit-scrollbar-thumb{background:#2c2e33;border-radius:8px;border:2px solid var(--panel)}
+  .grp{margin-top:16px}
+  .grp>.lbl{color:var(--dim);text-transform:uppercase;letter-spacing:.12em;font-size:10px;margin-bottom:8px;border-bottom:1px dotted var(--line);padding-bottom:5px}
+  .row{margin:9px 0}
+  .row .top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px}
+  .row .top label{font-size:11.5px;color:var(--text)}
+  .row .top .val{color:var(--accent);font-size:11px;font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:3px;background:var(--line);border-radius:3px;outline:none;margin:4px 0}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #0d0e10}
+  input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #0d0e10}
+  .chk{display:flex;align-items:center;gap:8px;margin:6px 0;cursor:pointer;font-size:11.5px}
+  .chk input{accent-color:var(--accent);width:14px;height:14px;cursor:pointer}
+  .patgrid{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;margin-top:2px}
+  .patgrid .chk{margin:3px 0}
+  .subhd{color:var(--dim);font-size:10px;letter-spacing:.08em;margin:10px 0 2px}
+  .subhd .mini{padding:1px 7px;font-size:9px;margin-left:6px;border-radius:4px;letter-spacing:.02em}
+  button{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;cursor:pointer;letter-spacing:.03em}
+  button:hover{border-color:#4a4e55;background:#2a2c31}
+  button:active{transform:translateY(1px)}
+  .btnrow{display:flex;gap:8px;margin-top:10px}
+  .btnrow button{flex:1}
+  button.primary{background:var(--accent);color:#1a1400;border-color:var(--accent);font-weight:600}
+  button.primary:hover{background:#f0cc5c}
+  select{width:100%;background:var(--field);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit;cursor:pointer;margin-top:6px}
+  #stampWrap{margin-top:8px;display:flex;flex-direction:column;align-items:center}
+  #stamp{background:#fff;border-radius:8px;touch-action:none;cursor:crosshair;box-shadow:0 2px 10px rgba(0,0,0,.4)}
+  #stage{flex:1;display:flex;flex-direction:column;min-width:0}
+  #bar{height:44px;flex:0 0 44px;border-bottom:1px solid var(--line);background:var(--panel);display:flex;align-items:center;gap:10px;padding:0 14px}
+  #bar .sp{flex:1}
+  #bar .status{color:var(--dim);font-size:11px}
+  #bar .status b{color:var(--accent2);font-weight:600}
+  #view{flex:1;position:relative;overflow:auto;display:flex;align-items:center;justify-content:center;padding:24px;
+    background:linear-gradient(45deg,#141518 25%,transparent 25%,transparent 75%,#141518 75%),linear-gradient(45deg,#141518 25%,#0d0e10 25%,#0d0e10 75%,#141518 75%);
+    background-size:20px 20px;background-position:0 0,10px 10px}
+  #cv{background:#fff;box-shadow:0 6px 40px rgba(0,0,0,.6);max-width:100%;max-height:100%}
+  #drop{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity .12s;background:rgba(232,193,74,.08);border:2px dashed var(--accent);z-index:5}
+  #drop.on{opacity:1}
+  #drop span{background:var(--panel);padding:16px 22px;border-radius:8px;color:var(--accent);letter-spacing:.05em}
+  #overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;background:rgba(10,11,13,.72);z-index:6}
+  #overlay.on{display:flex}
+  #overlay .ring{width:38px;height:38px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+  #overlay .msg{color:var(--text);font-size:12px;letter-spacing:.04em}
+  #overlay .prog{width:220px;height:4px;background:var(--line);border-radius:3px;overflow:hidden}
+  #overlay .prog i{display:block;height:100%;width:0;background:var(--accent);transition:width .1s}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .hint{color:var(--dim);font-size:10.5px;line-height:1.5;margin-top:6px}
+  input[type=file]{display:none}
+  #cvwrap{position:relative;display:flex;max-width:100%;max-height:100%}
+  #cvwrap.edit #cv{cursor:crosshair}
+  #ov{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+  #edittools{display:none}
+  #edittools.on{display:block}
+  .toolrow{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+  .toolrow button{padding:7px 6px;font-size:11px}
+  .toolrow button.sel{background:var(--accent);color:#1a1400;border-color:var(--accent);font-weight:600}
+  .legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:9px;color:var(--dim);font-size:10px}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+</style>
+</head>
+<body>
+<div id="panel">
+  <header><h1>Scrawlery</h1><p>flow-field line art from any image</p></header>
+  <div id="ctrls">
+    <div class="btnrow"><button id="loadBtn">Load image</button><button id="sampleBtn">Sample</button></div>
+    <div class="hint">Drag an image onto the canvas, or paste with ⌘V.</div>
+
+    <div class="grp">
+      <div class="lbl">Cells — the ribbons</div>
+      <div class="row"><div class="top"><label>Detail (cells)</label><span class="val" id="v_detail">700</span></div><input type="range" id="detail" min="80" max="2600" step="20" value="700"></div>
+      <div class="row"><div class="top"><label>Ribbon stretch</label><span class="val" id="v_aniso">2.4</span></div><input type="range" id="aniso" min="1" max="9" step="0.1" value="2.4"></div>
+      <div class="row"><div class="top"><label>Cell compactness</label><span class="val" id="v_compact">14</span></div><input type="range" id="compact" min="4" max="90" step="1" value="14"></div>
+      <div class="row"><div class="top"><label>Smooth cells</label><span class="val" id="v_smooth">0</span></div><input type="range" id="smooth" min="0" max="4" step="1" value="0"></div>
+      <div class="row"><div class="top"><label>Working size (px)</label><span class="val" id="v_size">820</span></div><input type="range" id="size" min="480" max="1200" step="20" value="820"></div>
+      <div class="hint">These re-run segmentation. Everything below restyles live.</div>
+    </div>
+
+    <div class="grp">
+      <div class="lbl">Tone — makes the subject read</div>
+      <div class="row"><div class="top"><label>Tone bands</label><span class="val" id="v_bands">6</span></div><input type="range" id="bands" min="2" max="12" step="1" value="6"></div>
+      <div class="row"><div class="top"><label>Ink contrast (γ)</label><span class="val" id="v_gamma">1.15</span></div><input type="range" id="gamma" min="0.4" max="2.6" step="0.05" value="1.15"></div>
+      <div class="row"><div class="top"><label>Ink amount</label><span class="val" id="v_ink">1.00</span></div><input type="range" id="ink" min="0.3" max="2.0" step="0.05" value="1.0"></div>
+      <div class="row"><div class="top"><label>White cutoff</label><span class="val" id="v_white">0.90</span></div><input type="range" id="white" min="0.55" max="1.0" step="0.01" value="0.90"></div>
+      <div class="hint">Cells lighter than the cutoff stay blank — keeps highlights clean.</div>
+    </div>
+
+    <div class="grp">
+      <div class="lbl">Color</div>
+      <div class="row"><div class="top"><label>Mode</label></div>
+        <select id="colorMode" style="width:100%;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px;font-size:12px">
+          <option value="mono">Single ink</option>
+          <option value="tone">Tone-based (dark/light inks)</option>
+          <option value="flow">Flow direction (hue sweep)</option>
+          <option value="image">From image (sampled colors)</option>
+        </select>
+      </div>
+      <div class="row" style="display:flex;gap:14px;align-items:center">
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dim)">Ink A <input type="color" id="inkA" value="#141414"></label>
+        <label id="inkBwrap" style="display:none;align-items:center;gap:6px;font-size:11px;color:var(--dim)">Ink B <input type="color" id="inkB" value="#7a3b1f"></label>
+      </div>
+      <div class="row" id="hueSpanRow" style="display:none"><div class="top"><label>Hue spread</label><span class="val" id="v_hueSpan">180</span></div><input type="range" id="hueSpan" min="0" max="360" step="5" value="180"></div>
+      <div id="imageColorRows" style="display:none">
+        <div class="row"><div class="top"><label>Color strength</label><span class="val" id="v_imgMix">1.00</span></div><input type="range" id="imgMix" min="0" max="1" step="0.05" value="1.0"></div>
+        <div class="row"><div class="top"><label>Saturation boost</label><span class="val" id="v_imgSat">1.25</span></div><input type="range" id="imgSat" min="0.4" max="2.5" step="0.05" value="1.25"></div>
+      </div>
+      <div class="row"><div class="top"><label>Paper</label></div>
+        <input type="color" id="paper" value="#ffffff">
+      </div>
+    </div>
+
+    <div class="grp">
+      <div class="lbl">Line quality</div>
+      <div class="row"><div class="top"><label>Pattern scale</label><span class="val" id="v_pscale">1.00</span></div><input type="range" id="pscale" min="0.5" max="2.2" step="0.05" value="1.0"></div>
+      <div class="row"><div class="top"><label>Line weight</label><span class="val" id="v_lw">1.0</span></div><input type="range" id="lw" min="0.4" max="3" step="0.1" value="1.0"></div>
+      <div class="row"><div class="top"><label>Hand-drawn wobble</label><span class="val" id="v_jit">0.4</span></div><input type="range" id="jit" min="0" max="1.5" step="0.05" value="0.4"></div>
+      <label class="chk"><input type="checkbox" id="follow" checked> Follow the form (flow orientation)</label>
+    </div>
+
+    <div class="grp">
+      <div class="lbl">Structure lines</div>
+      <label class="chk"><input type="checkbox" id="edges" checked> Structural edges (eyes / features)</label>
+      <div class="row"><div class="top"><label>Edge threshold</label><span class="val" id="v_et">0.24</span></div><input type="range" id="et" min="0.05" max="0.7" step="0.01" value="0.24"></div>
+      <div class="row"><div class="top"><label>Edge weight</label><span class="val" id="v_ew">1.3</span></div><input type="range" id="ew" min="0.4" max="3.5" step="0.1" value="1.3"></div>
+      <label class="chk"><input type="checkbox" id="bounds" checked> Cell boundary lines</label>
+      <div class="row"><div class="top"><label>Boundary weight</label><span class="val" id="v_bw">0.9</span></div><input type="range" id="bw" min="0.3" max="2.5" step="0.1" value="0.9"></div>
+    </div>
+
+    <div class="grp">
+      <div class="lbl">Scrawls in play</div>
+      <div class="subhd">FLOWING (along the ribbon) <button class="mini" data-grp="flow" data-act="all">all</button><button class="mini" data-grp="flow" data-act="none">none</button></div>
+      <div class="patgrid" id="flowgrid"></div>
+      <div class="subhd">MEDALLIONS (repeating tiles) <button class="mini" data-grp="tile" data-act="all">all</button><button class="mini" data-grp="tile" data-act="none">none</button></div>
+      <div class="patgrid" id="tilegrid"></div>
+    </div>
+
+    <div class="grp">
+      <div class="lbl">Your scrawl</div>
+      <label class="chk"><input type="checkbox" id="en_custom"> Use my scrawl</label>
+      <select id="customKind"><option value="tile">Repeat as a tile</option><option value="flow">Stamp along the flow</option></select>
+      <div id="stampWrap"><canvas id="stamp" width="190" height="190"></canvas></div>
+      <div class="btnrow"><button id="undoStamp">Undo</button><button id="clearStamp">Clear</button></div>
+      <div class="hint">Draw a small motif above (each mouse stroke is one line). It fills cells as a repeating tile, or gets stamped along the ribbons.</div>
+    </div>
+
+    <div class="grp">
+      <div class="lbl">Manual edit</div>
+      <div class="btnrow"><button id="editToggle">Edit cells: Off</button></div>
+      <div id="edittools">
+        <div class="toolrow">
+          <button data-tool="auto" class="sel">Auto</button>
+          <button data-tool="blank">Blank</button>
+          <button data-tool="darker">Darker</button>
+          <button data-tool="lighter">Lighter</button>
+        </div>
+        <div class="toolrow"><button data-tool="scrawl" style="grid-column:1/3">Force a scrawl…</button></div>
+        <select id="toolScrawl"></select>
+        <div class="row" style="margin-top:10px"><div class="top"><label>Brush size</label><span class="val" id="v_brush">1 cell</span></div><input type="range" id="brush" min="0" max="60" step="2" value="0"></div>
+        <div class="legend"><span><i style="background:#50b478"></i>tone</span><span><i style="background:#5096ff"></i>forced</span><span><i style="background:#966edc"></i>both</span><span><i style="background:#dc3c3c"></i>blank</span></div>
+        <div class="btnrow"><button id="clearEdits">Clear all edits</button></div>
+        <div class="hint">Turn on, pick a tool, then click or drag across cells. Changing Detail / Ribbon stretch / Compactness / Working size re-segments and clears edits.</div>
+      </div>
+    </div>
+
+    <div class="grp">
+      <div class="lbl">Output</div>
+      <div class="row"><div class="top"><label>Pattern seed</label><span class="val" id="v_seed">1</span></div><input type="range" id="seed" min="1" max="999" step="1" value="1"></div>
+      <div class="btnrow"><button id="reroll">Re-roll patterns</button><button id="regen">Regenerate</button></div>
+      <div class="row" style="margin-top:12px"><div class="top"><label>Export scale</label><span class="val" id="v_ex">2×</span></div><input type="range" id="ex" min="1" max="4" step="1" value="2"></div>
+      <div class="btnrow"><button class="primary" id="save">Save PNG</button></div>
+    </div>
+  </div>
+</div>
+
+<div id="stage">
+  <div id="bar">
+    <button id="regen2">Regenerate</button><button id="reroll2">Re-roll</button>
+    <div class="sp"></div>
+    <div class="status" id="status">Load an image or hit <b>Sample</b> to begin.</div>
+  </div>
+  <div id="view">
+    <div id="cvwrap"><canvas id="cv" width="820" height="820"></canvas><canvas id="ov"></canvas></div>
+    <div id="drop"><span>Drop image to scrawl</span></div>
+    <div id="overlay"><div class="ring"></div><div class="msg" id="omsg">Working…</div><div class="prog"><i id="obar"></i></div></div>
+  </div>
+</div>
+<input type="file" id="file" accept="image/*">
+
+<script>
+"use strict";
+(function(){
+const $=id=>document.getElementById(id);
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const TAU=Math.PI*2;
+function rng(seed){let s=seed>>>0;return function(){s|=0;s=(s+0x6D2B79F5)|0;let t=Math.imul(s^(s>>>15),1|s);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;};}
+function hash2(a,b){let h=2166136261>>>0;h=Math.imul(h^a,16777619);h=Math.imul(h^b,16777619);h^=h>>>13;h=Math.imul(h,16777619);h^=h>>>15;return h>>>0;}
+
+// -------- colour / edges --------
+function rgb2lab(r,g,b){r/=255;g/=255;b/=255;
+  r=r>0.04045?Math.pow((r+0.055)/1.055,2.4):r/12.92;g=g>0.04045?Math.pow((g+0.055)/1.055,2.4):g/12.92;b=b>0.04045?Math.pow((b+0.055)/1.055,2.4):b/12.92;
+  let x=(r*0.4124+g*0.3576+b*0.1805)/0.95047,y=(r*0.2126+g*0.7152+b*0.0722),z=(r*0.0193+g*0.1192+b*0.9505)/1.08883;
+  const f=t=>t>0.008856?Math.cbrt(t):(7.787*t+16/116);x=f(x);y=f(y);z=f(z);return [116*y-16,500*(x-y),200*(y-z)];}
+function sobelMag(gray,w,h){const mag=new Float32Array(w*h);let mx=1e-6;
+  for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const i=y*w+x;
+    const a=gray[i-w-1],b=gray[i-w],c=gray[i-w+1],d=gray[i-1],f=gray[i+1],g=gray[i+w-1],hh=gray[i+w],k=gray[i+w+1];
+    const sx=(c+2*f+k)-(a+2*d+g),sy=(g+2*hh+k)-(a+2*b+c);const m=Math.hypot(sx,sy);mag[i]=m;if(m>mx)mx=m;}
+  for(let i=0;i<mag.length;i++)mag[i]/=mx;return mag;}
+
+// -------- flow field --------
+function boxblur(src,w,h,r,passes){let a=Float32Array.from(src),b=new Float32Array(w*h);
+  for(let pz=0;pz<passes;pz++){
+    for(let y=0;y<h;y++){let s=0;const row=y*w;for(let x=-r;x<=r;x++)s+=a[row+clamp(x,0,w-1)];
+      for(let x=0;x<w;x++){b[row+x]=s/(2*r+1);s+=a[row+Math.min(w-1,x+r+1)]-a[row+Math.max(0,x-r)];}}
+    for(let x=0;x<w;x++){let s=0;for(let y=-r;y<=r;y++)s+=b[clamp(y,0,h-1)*w+x];
+      for(let y=0;y<h;y++){a[y*w+x]=s/(2*r+1);s+=b[Math.min(h-1,y+r+1)*w+x]-b[Math.max(0,y-r)*w+x];}}}
+  return a;}
+function buildField(gray,w,h){
+  const gx=new Float32Array(w*h),gy=new Float32Array(w*h);
+  for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const i=y*w+x;gx[i]=gray[i+1]-gray[i-1];gy[i]=gray[i+w]-gray[i-w];}
+  let E=new Float32Array(w*h),F=new Float32Array(w*h),G=new Float32Array(w*h);
+  for(let i=0;i<w*h;i++){E[i]=gx[i]*gx[i];F[i]=gx[i]*gy[i];G[i]=gy[i]*gy[i];}
+  E=boxblur(E,w,h,3,4);F=boxblur(F,w,h,3,4);G=boxblur(G,w,h,3,4);
+  const c2=new Float32Array(w*h),s2=new Float32Array(w*h);
+  for(let i=0;i<w*h;i++){const th=0.5*Math.atan2(2*F[i],(E[i]-G[i])),ph=th+Math.PI/2;c2[i]=Math.cos(2*ph);s2[i]=Math.sin(2*ph);}
+  return {c2,s2,w,h};}
+function fieldAngle(fld,x,y){const {c2,s2,w,h}=fld;x=clamp(x,0,w-1.001);y=clamp(y,0,h-1.001);
+  const x0=x|0,y0=y|0,fx=x-x0,fy=y-y0,i=y0*w+x0;
+  const C=c2[i]*(1-fx)*(1-fy)+c2[i+1]*fx*(1-fy)+c2[i+w]*(1-fx)*fy+c2[i+w+1]*fx*fy;
+  const S=s2[i]*(1-fx)*(1-fy)+s2[i+1]*fx*(1-fy)+s2[i+w]*(1-fx)*fy+s2[i+w+1]*fx*fy;
+  return 0.5*Math.atan2(S,C);}
+
+// -------- evenly-spaced streamlines (local cell coords) --------
+function streamlines(fld,bx,by,bw,bh,dSep,maxLines){
+  const step=Math.max(0.6,dSep*0.42),maxLen=Math.max(bw,bh)*2.4,dTest=dSep*0.82;
+  const gcs=Math.max(1,dSep),gw=Math.max(1,Math.ceil(bw/gcs)),gh=Math.max(1,Math.ceil(bh/gcs));
+  const grid=Array.from({length:gw*gh},()=>[]);
+  const cellOf=(x,y)=>clamp(y/gcs|0,0,gh-1)*gw+clamp(x/gcs|0,0,gw-1);
+  function farEnough(x,y){if(x<0||y<0||x>bw||y>bh)return false;
+    const gxi=clamp(x/gcs|0,0,gw-1),gyi=clamp(y/gcs|0,0,gh-1);
+    for(let yy=gyi-1;yy<=gyi+1;yy++)for(let xx=gxi-1;xx<=gxi+1;xx++){if(xx<0||yy<0||xx>=gw||yy>=gh)continue;const arr=grid[yy*gw+xx];
+      for(let k=0;k<arr.length;k+=2){const dx=arr[k]-x,dy=arr[k+1]-y;if(dx*dx+dy*dy<dTest*dTest)return false;}}return true;}
+  function trace(sx,sy){const pts=[[sx,sy]];
+    for(const sign of [1,-1]){let x=sx,y=sy,a0=fieldAngle(fld,bx+x,by+y),hx=Math.cos(a0)*sign,hy=Math.sin(a0)*sign;const local=[];
+      for(let it=0;it<1600;it++){let ph=fieldAngle(fld,bx+x,by+y),dx=Math.cos(ph),dy=Math.sin(ph);if(dx*hx+dy*hy<0){dx=-dx;dy=-dy;}
+        const mx=x+dx*step*0.5,my=y+dy*step*0.5;let p2=fieldAngle(fld,bx+mx,by+my),dx2=Math.cos(p2),dy2=Math.sin(p2);if(dx2*dx+dy2*dy<0){dx2=-dx2;dy2=-dy2;}
+        x+=dx2*step;y+=dy2*step;hx=dx2;hy=dy2;
+        if(x<-dSep||y<-dSep||x>bw+dSep||y>bh+dSep)break;if(!farEnough(x,y))break;local.push([x,y]);if(local.length*step>maxLen)break;}
+      if(sign===1)for(const p of local)pts.push(p);else for(const p of local)pts.unshift(p);}
+    return pts;}
+  const lines=[],seeds=[[bw/2,bh/2]];let guard=0;
+  while(seeds.length&&lines.length<maxLines&&guard++<maxLines*40){
+    const [sx,sy]=seeds.shift();if(!farEnough(sx,sy))continue;const line=trace(sx,sy);if(line.length<2)continue;
+    for(const [x,y] of line)grid[cellOf(x,y)].push(x,y);lines.push(line);
+    for(let k=0;k<line.length;k+=2){const n=Math.min(line.length-1,k+1),p=Math.max(0,k-1);
+      const tx=line[n][0]-line[p][0],ty=line[n][1]-line[p][1],L=Math.hypot(tx,ty)||1,nx=-ty/L,ny=tx/L,[x,y]=line[k];
+      seeds.push([x+nx*dSep,y+ny*dSep]);seeds.push([x-nx*dSep,y-ny*dSep]);}}
+  return lines;}
+
+// -------- SLIC (flow-anisotropic) --------
+function slic(lab,fld,w,h,K,m,iters,A){
+  const N=w*h,S=Math.max(2,Math.round(Math.sqrt(N/K))),centers=[];
+  for(let y=S/2|0;y<h;y+=S)for(let x=S/2|0;x<w;x+=S){const i=(y*w+x)*3;centers.push({x,y,l:lab[i],a:lab[i+1],b:lab[i+2]});}
+  const labels=new Int32Array(N).fill(-1),dist=new Float32Array(N).fill(Infinity),invS2=1/(S*S),m2=m*m,R=Math.ceil(S*Math.sqrt(A)*1.7);
+  for(let it=0;it<iters;it++){dist.fill(Infinity);
+    for(let c=0;c<centers.length;c++){const C=centers[c];const ph=A>1.001?fieldAngle(fld,C.x,C.y):0,ca=Math.cos(ph),sa=Math.sin(ph);
+      const x0=Math.max(0,(C.x-R)|0),x1=Math.min(w-1,(C.x+R)|0),y0=Math.max(0,(C.y-R)|0),y1=Math.min(h-1,(C.y+R)|0);
+      for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){const p=y*w+x,i=p*3;
+        const dl=lab[i]-C.l,da=lab[i+1]-C.a,db=lab[i+2]-C.b,dc=dl*dl+da*da+db*db;
+        const ex=x-C.x,ey=y-C.y,ux=ex*ca+ey*sa,uy=-ex*sa+ey*ca,ds=ux*ux/A+uy*uy*A;
+        const D=dc+m2*invS2*ds;if(D<dist[p]){dist[p]=D;labels[p]=c;}}}
+    const sx=new Float64Array(centers.length),sy=new Float64Array(centers.length),sl=new Float64Array(centers.length),sa2=new Float64Array(centers.length),sb=new Float64Array(centers.length),cn=new Float64Array(centers.length);
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){const p=y*w+x,l=labels[p];if(l<0)continue;const i=p*3;sx[l]+=x;sy[l]+=y;sl[l]+=lab[i];sa2[l]+=lab[i+1];sb[l]+=lab[i+2];cn[l]++;}
+    for(let c=0;c<centers.length;c++)if(cn[c]>0){const n=cn[c];centers[c]={x:sx[c]/n,y:sy[c]/n,l:sl[c]/n,a:sa2[c]/n,b:sb[c]/n};}}
+  enforceConnectivity(labels,w,h,S);return {labels,count:relabelCount(labels)};}
+function enforceConnectivity(labels,w,h,S){const N=w*h,out=new Int32Array(N).fill(-1),minSz=Math.max(8,(S*S)/4|0),dx=[-1,1,0,0],dy=[0,0,-1,1],stack=new Int32Array(N);let newLbl=0;
+  for(let i=0;i<N;i++){if(out[i]!==-1)continue;const orig=labels[i];let sp=0;stack[sp++]=i;out[i]=newLbl;const comp=[i];let adopt=-1;
+    while(sp>0){const p=stack[--sp],px=p%w,py=(p/w)|0;for(let d=0;d<4;d++){const nx=px+dx[d],ny=py+dy[d];if(nx<0||ny<0||nx>=w||ny>=h)continue;const np=ny*w+nx;
+      if(out[np]===-1&&labels[np]===orig){out[np]=newLbl;stack[sp++]=np;comp.push(np);}else if(out[np]!==-1&&out[np]!==newLbl)adopt=out[np];}}
+    if(comp.length<minSz&&adopt!==-1){for(const p of comp)out[p]=adopt;}else newLbl++;}
+  labels.set(out);}
+function relabelCount(l){let m=-1;for(let i=0;i<l.length;i++)if(l[i]>m)m=l[i];return m+1;}
+function smoothLabels(src,w,h,strength,count){if(strength<=0)return Int32Array.from(src);
+  const R=strength*2,R2=R*R;let a=Int32Array.from(src);const b=new Int32Array(w*h),tally=new Int32Array(count),touched=new Int32Array((2*R+1)*(2*R+1));
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){let nt=0,best=a[y*w+x],bc=0;
+    for(let dy=-R;dy<=R;dy++){const yy=y+dy;if(yy<0||yy>=h)continue;const row=yy*w;for(let dx=-R;dx<=R;dx++){if(dx*dx+dy*dy>R2)continue;const xx=x+dx;if(xx<0||xx>=w)continue;const l=a[row+xx],t=++tally[l];if(t===1)touched[nt++]=l;if(t>bc){bc=t;best=l;}}}
+    b[y*w+x]=best;for(let j=0;j<nt;j++)tally[touched[j]]=0;}
+  return b;}
+
+// -------- draw helpers --------
+function strokeLine(ctx,line,S,jit,rnd,lw){if(line.length<2)return;ctx.lineWidth=lw;ctx.beginPath();ctx.moveTo(line[0][0]*S,line[0][1]*S);
+  for(let i=1;i<line.length;i++){let x=line[i][0],y=line[i][1];
+    if(jit>0.01){const px=line[i-1],nx=-(y-px[1]),ny=(x-px[0]),L=Math.hypot(nx,ny)||1,j=(rnd()-0.5)*jit*1.5;x+=nx/L*j;y+=ny/L*j;}
+    ctx.lineTo(x*S,y*S);}ctx.stroke();}
+function offsetLine(line,off){const out=[];for(let i=0;i<line.length;i++){const a=line[Math.max(0,i-1)],b=line[Math.min(line.length-1,i+1)];
+  let tx=b[0]-a[0],ty=b[1]-a[1];const L=Math.hypot(tx,ty)||1;out.push([line[i][0]-ty/L*off,line[i][1]+tx/L*off]);}return out;}
+function waveLine(line,wl,amp){let arc=0;return line.map((p,i)=>{if(i>0)arc+=Math.hypot(p[0]-line[i-1][0],p[1]-line[i-1][1]);
+  const a=line[Math.max(0,i-1)],b=line[Math.min(line.length-1,i+1)];let tx=b[0]-a[0],ty=b[1]-a[1];const L=Math.hypot(tx,ty)||1,nx=-ty/L,ny=tx/L,o=Math.sin(arc/wl*TAU)*amp;return [p[0]+nx*o,p[1]+ny*o];});}
+function walkLine(line,spacing,cb){let leftover=spacing*0.5;
+  for(let i=1;i<line.length;i++){const [x0,y0]=line[i-1],[x1,y1]=line[i];let dx=x1-x0,dy=y1-y0,seg=Math.hypot(dx,dy);if(seg<1e-6)continue;const ux=dx/seg,uy=dy/seg;
+    while(leftover<=seg){cb(x0+ux*leftover,y0+uy*leftover,ux,uy);leftover+=spacing;}leftover-=seg;}}
+function tileGrid(W,H,spacing,cb){let row=0;for(let y=spacing*0.5;y<H+spacing;y+=spacing*0.86,row++){const off=(row%2)*spacing*0.5;
+  for(let x=-spacing+off;x<W+spacing;x+=spacing){cb(x,y);}}}
+function drawStrokes(ctx,strokes,cx,cy,size,ang,lw){if(!strokes||!strokes.length)return;ctx.lineWidth=lw;const ca=Math.cos(ang),sa=Math.sin(ang);
+  for(const st of strokes){if(!st.length)continue;ctx.beginPath();
+    for(let i=0;i<st.length;i++){const nx=(st[i][0]-0.5)*size,ny=(st[i][1]-0.5)*size,px=cx+(nx*ca-ny*sa),py=cy+(nx*sa+ny*ca);if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);}
+    if(st.length===1){const nx=(st[0][0]-0.5)*size,ny=(st[0][1]-0.5)*size;ctx.arc(cx+(nx*ca-ny*sa),cy+(nx*sa+ny*ca),lw*0.9,0,TAU);ctx.fill();}else ctx.stroke();}}
+
+// -------- flowing decorators (operate on streamlines) --------
+function jitAmt(){return P.jit;}
+const DECORS={
+  ribbon(ctx,lines,d,dSep,S,rnd,lw){for(const l of lines)strokeLine(ctx,l,S,jitAmt(),rnd,lw);},
+  doubleRibbon(ctx,lines,d,dSep,S,rnd,lw){for(const l of lines){strokeLine(ctx,l,S,jitAmt(),rnd,lw);strokeLine(ctx,offsetLine(l,dSep*0.34),S,0,rnd,lw*0.75);}},
+  scales(ctx,lines,d,dSep,S,rnd,lw){ctx.lineWidth=lw;const r=dSep*0.5;for(const l of lines)walkLine(l,dSep*0.92,(x,y,ux,uy)=>{const ta=Math.atan2(uy,ux);ctx.beginPath();ctx.arc(x*S,y*S,r*S,ta,ta+Math.PI);ctx.stroke();});},
+  dots(ctx,lines,d,dSep,S,rnd,lw){const r=lerp(0.7,1.8,d)*S;for(const l of lines)walkLine(l,dSep*0.8,(x,y)=>{ctx.beginPath();ctx.arc(x*S,y*S,r*(0.75+rnd()*0.5),0,TAU);ctx.fill();});},
+  beads(ctx,lines,d,dSep,S,rnd,lw){ctx.lineWidth=lw;const r=dSep*0.3;for(const l of lines)walkLine(l,dSep*1.05,(x,y)=>{ctx.beginPath();ctx.arc(x*S,y*S,r*S,0,TAU);ctx.stroke();});},
+  feather(ctx,lines,d,dSep,S,rnd,lw){ctx.lineWidth=lw;const bl=dSep*0.8;for(const l of lines){strokeLine(ctx,l,S,jitAmt(),rnd,lw);walkLine(l,dSep*0.7,(x,y,ux,uy)=>{const ba=Math.atan2(-uy,-ux);for(const s of[-0.6,0.6]){const a=ba+s;ctx.beginPath();ctx.moveTo(x*S,y*S);ctx.lineTo((x+Math.cos(a)*bl)*S,(y+Math.sin(a)*bl)*S);ctx.stroke();}});}},
+  leaves(ctx,lines,d,dSep,S,rnd,lw){ctx.lineWidth=lw;const Lf=dSep*0.95,hw=dSep*0.3;for(const l of lines){let side=1;walkLine(l,dSep*1.15,(x,y,ux,uy)=>{const nx=-uy*side,ny=ux*side,cx=x+nx*Lf*0.5,cy=y+ny*Lf*0.5,tx=ux*hw,ty=uy*hw,ex=x+nx*Lf,ey=y+ny*Lf;ctx.beginPath();ctx.moveTo(x*S,y*S);ctx.quadraticCurveTo((cx+tx)*S,(cy+ty)*S,ex*S,ey*S);ctx.quadraticCurveTo((cx-tx)*S,(cy-ty)*S,x*S,y*S);ctx.stroke();side=-side;});}},
+  weave(ctx,lines,d,dSep,S,rnd,lw){const dash=dSep*0.7*S;ctx.lineWidth=lw;lines.forEach((l,i)=>{ctx.setLineDash([dash,dash]);ctx.lineDashOffset=(i%2)*dash;strokeLine(ctx,l,S,0,rnd,lw);});ctx.setLineDash([]);},
+  wave(ctx,lines,d,dSep,S,rnd,lw){for(const l of lines)strokeLine(ctx,waveLine(l,dSep*3,dSep*0.4),S,0,rnd,lw);},
+  braid(ctx,lines,d,dSep,S,rnd,lw){ctx.lineWidth=lw;for(const l of lines){strokeLine(ctx,waveLine(l,dSep*2.2,dSep*0.3),S,0,rnd,lw);strokeLine(ctx,waveLine(l,dSep*2.2,-dSep*0.3),S,0,rnd,lw);}},
+  herringbone(ctx,lines,d,dSep,S,rnd,lw){ctx.lineWidth=lw;const seg=dSep*0.8;lines.forEach((l,i)=>{const bend=(i%2?1:-1)*0.7;walkLine(l,dSep*0.7,(x,y,ux,uy)=>{const a=Math.atan2(uy,ux)+bend;ctx.beginPath();ctx.moveTo((x-Math.cos(a)*seg*0.5)*S,(y-Math.sin(a)*seg*0.5)*S);ctx.lineTo((x+Math.cos(a)*seg*0.5)*S,(y+Math.sin(a)*seg*0.5)*S);ctx.stroke();});});},
+  zigzag(ctx,lines,d,dSep,S,rnd,lw){ctx.lineWidth=lw;const amp=dSep*0.42;for(const l of lines){const zs=[];let k=0;walkLine(l,dSep*0.6,(x,y,ux,uy)=>{const nx=-uy,ny=ux,s=(k%2?1:-1);zs.push([x+nx*amp*s,y+ny*amp*s]);k++;});if(zs.length>1)strokeLine(ctx,zs,S,0,rnd,lw);}},
+  ladder(ctx,lines,d,dSep,S,rnd,lw){ctx.lineWidth=lw;const off=dSep*0.32;for(const l of lines){const a=offsetLine(l,off),b=offsetLine(l,-off);strokeLine(ctx,a,S,0,rnd,lw);strokeLine(ctx,b,S,0,rnd,lw);walkLine(l,dSep*0.8,(x,y,ux,uy)=>{const nx=-uy,ny=ux;ctx.beginPath();ctx.moveTo((x+nx*off)*S,(y+ny*off)*S);ctx.lineTo((x-nx*off)*S,(y-ny*off)*S);ctx.stroke();});}},
+  fringe(ctx,lines,d,dSep,S,rnd,lw){ctx.lineWidth=lw;const bl=dSep*0.95;for(const l of lines){strokeLine(ctx,l,S,jitAmt(),rnd,lw);walkLine(l,dSep*0.55,(x,y,ux,uy)=>{const nx=-uy,ny=ux;ctx.beginPath();ctx.moveTo(x*S,y*S);ctx.lineTo((x+nx*bl)*S,(y+ny*bl)*S);ctx.stroke();});}},
+  ripple(ctx,lines,d,dSep,S,rnd,lw){ctx.lineWidth=lw;const r=dSep*0.55;for(const l of lines)walkLine(l,dSep*0.85,(x,y,ux,uy)=>{const ta=Math.atan2(uy,ux);ctx.beginPath();ctx.arc(x*S,y*S,r*S,ta-1.9,ta-0.5);ctx.stroke();ctx.beginPath();ctx.arc(x*S,y*S,r*0.6*S,ta-1.9,ta-0.5);ctx.stroke();});},
+  pearls(ctx,lines,d,dSep,S,rnd,lw){ctx.lineWidth=lw;let k=0;for(const l of lines)walkLine(l,dSep*0.9,(x,y)=>{const r=(k%2?dSep*0.34:dSep*0.16)*S;ctx.beginPath();ctx.arc(x*S,y*S,r,0,TAU);ctx.stroke();k++;});},
+  loops(ctx,lines,d,dSep,S,rnd,lw){ctx.lineWidth=lw;const r=dSep*0.4;for(const l of lines){let side=1;walkLine(l,dSep*1.1,(x,y,ux,uy)=>{const nx=-uy*side,ny=ux*side;ctx.beginPath();ctx.arc((x+nx*r)*S,(y+ny*r)*S,r*S,0,TAU);ctx.stroke();side=-side;});}},
+  crosshatch(ctx,lines,d,dSep,S,rnd,lw){ctx.lineWidth=lw;const t=dSep*0.55;for(const l of lines){strokeLine(ctx,l,S,jitAmt(),rnd,lw);walkLine(l,dSep*0.5,(x,y,ux,uy)=>{const nx=-uy,ny=ux;ctx.beginPath();ctx.moveTo((x-nx*t)*S,(y-ny*t)*S);ctx.lineTo((x+nx*t)*S,(y+ny*t)*S);ctx.stroke();});}},
+  chain(ctx,lines,d,dSep,S,rnd,lw){ctx.lineWidth=lw;const rl=dSep*0.6,rw=dSep*0.32;for(const l of lines)walkLine(l,dSep*0.85,(x,y,ux,uy)=>{ctx.beginPath();ctx.ellipse(x*S,y*S,rl*S,rw*S,Math.atan2(uy,ux),0,TAU);ctx.stroke();});},
+  rope(ctx,lines,d,dSep,S,rnd,lw){ctx.lineWidth=lw;const off=dSep*0.32;for(const l of lines){strokeLine(ctx,offsetLine(l,off),S,0,rnd,lw*0.85);strokeLine(ctx,offsetLine(l,-off),S,0,rnd,lw*0.85);let k=0;walkLine(l,dSep*0.5,(x,y,ux,uy)=>{const nx=-uy,ny=ux,s=(k%2?1:-1);ctx.beginPath();ctx.moveTo((x+nx*off-ux*dSep*0.28*s)*S,(y+ny*off-uy*dSep*0.28*s)*S);ctx.lineTo((x-nx*off+ux*dSep*0.28*s)*S,(y-ny*off+uy*dSep*0.28*s)*S);ctx.stroke();k++;});}},
+  eyes(ctx,lines,d,dSep,S,rnd,lw){ctx.lineWidth=lw;const rl=dSep*0.7,rw=dSep*0.42;for(const l of lines)walkLine(l,dSep*1.3,(x,y,ux,uy)=>{ctx.beginPath();ctx.ellipse(x*S,y*S,rl*S,rw*S,Math.atan2(uy,ux),0,TAU);ctx.stroke();ctx.beginPath();ctx.arc(x*S,y*S,rw*0.34*S,0,TAU);ctx.fill();});},
+  coil(ctx,lines,d,dSep,S,rnd,lw){ctx.lineWidth=lw;const r=dSep*0.5;for(const l of lines)walkLine(l,dSep*0.5,(x,y,ux,uy)=>{const a=Math.atan2(uy,ux);ctx.beginPath();ctx.arc(x*S,y*S,r*S,a-Math.PI*0.5,a+Math.PI*0.5);ctx.stroke();});},
+  scallop(ctx,lines,d,dSep,S,rnd,lw){ctx.lineWidth=lw;const r=dSep*0.5;for(const l of lines){strokeLine(ctx,l,S,jitAmt(),rnd,lw);walkLine(l,dSep,(x,y,ux,uy)=>{const ta=Math.atan2(uy,ux);ctx.beginPath();ctx.arc(x*S,y*S,r*S,ta+Math.PI,ta+TAU);ctx.stroke();});}},
+  chevron(ctx,lines,d,dSep,S,rnd,lw){ctx.lineWidth=lw;const L=dSep*0.55;for(const l of lines)walkLine(l,dSep*0.8,(x,y,ux,uy)=>{const nx=-uy,ny=ux,tx=x+ux*L*0.6,ty=y+uy*L*0.6;ctx.beginPath();ctx.moveTo((x+nx*L-ux*L*0.3)*S,(y+ny*L-uy*L*0.3)*S);ctx.lineTo(tx*S,ty*S);ctx.lineTo((x-nx*L-ux*L*0.3)*S,(y-ny*L-uy*L*0.3)*S);ctx.stroke();});},
+  sprig(ctx,lines,d,dSep,S,rnd,lw){ctx.lineWidth=lw;const bl=dSep*0.85;for(const l of lines){strokeLine(ctx,l,S,jitAmt(),rnd,lw);let side=1;walkLine(l,dSep*1.1,(x,y,ux,uy)=>{const ba=Math.atan2(uy,ux)+side*1.05;ctx.beginPath();ctx.moveTo(x*S,y*S);ctx.lineTo((x+Math.cos(ba)*bl)*S,(y+Math.sin(ba)*bl)*S);ctx.stroke();side=-side;});}},
+};
+
+// -------- tiled medallions (unit motif at cx,cy device coords) --------
+const MOTIFS={
+  rosette(ctx,cx,cy,r,a,d,rnd,lw){ctx.lineWidth=lw;const rings=2+((d*2)|0);for(let k=1;k<=rings;k++){ctx.beginPath();ctx.arc(cx,cy,r*k/rings,0,TAU);ctx.stroke();}
+    const sp=6+((d*6)|0);ctx.beginPath();for(let i=0;i<sp;i++){const t=a+i/sp*TAU;ctx.moveTo(cx+Math.cos(t)*r*0.35,cy+Math.sin(t)*r*0.35);ctx.lineTo(cx+Math.cos(t)*r,cy+Math.sin(t)*r);}ctx.stroke();
+    ctx.beginPath();ctx.arc(cx,cy,r*0.16,0,TAU);ctx.fill();},
+  floret(ctx,cx,cy,r,a,d,rnd,lw){ctx.lineWidth=lw;const pet=5+((d*4)|0);ctx.beginPath();
+    for(let p=0;p<pet;p++){const t=a+p/pet*TAU,px=cx+Math.cos(t)*r,py=cy+Math.sin(t)*r;ctx.moveTo(cx,cy);ctx.quadraticCurveTo(cx+Math.cos(t+0.4)*r*0.9,cy+Math.sin(t+0.4)*r*0.9,px,py);ctx.quadraticCurveTo(cx+Math.cos(t-0.4)*r*0.9,cy+Math.sin(t-0.4)*r*0.9,cx,cy);}
+    ctx.stroke();ctx.beginPath();ctx.arc(cx,cy,r*0.18,0,TAU);ctx.fill();},
+  paisley(ctx,cx,cy,r,a,d,rnd,lw){ctx.lineWidth=lw;const ca=Math.cos(a),sa=Math.sin(a),P0=(t,u)=>[cx+(t*ca-u*sa),cy+(t*sa+u*ca)];
+    const A=P0(-r,0),B=P0(r*0.5,r*0.62),C=P0(r,0),E=P0(r*0.2,-r*0.55);ctx.beginPath();ctx.moveTo(A[0],A[1]);ctx.quadraticCurveTo(B[0],B[1],C[0],C[1]);ctx.quadraticCurveTo(E[0],E[1],A[0],A[1]);ctx.stroke();
+    const dt=P0(r*0.45,0);ctx.beginPath();ctx.arc(dt[0],dt[1],r*0.14,0,TAU);ctx.fill();},
+  mandala(ctx,cx,cy,r,a,d,rnd,lw){ctx.lineWidth=lw;ctx.beginPath();ctx.arc(cx,cy,r*0.4,0,TAU);ctx.stroke();ctx.beginPath();ctx.arc(cx,cy,r*0.66,0,TAU);ctx.stroke();
+    const sc=8+((d*6)|0);for(let i=0;i<sc;i++){const t=a+i/sc*TAU,mx=cx+Math.cos(t)*r*0.85,my=cy+Math.sin(t)*r*0.85;ctx.beginPath();ctx.arc(mx,my,r*0.16,0,TAU);ctx.stroke();}
+    ctx.beginPath();ctx.arc(cx,cy,r*0.13,0,TAU);ctx.fill();},
+  star(ctx,cx,cy,r,a,d,rnd,lw){ctx.lineWidth=lw;const pts=5+((d*3)|0);ctx.beginPath();for(let i=0;i<pts*2;i++){const rr=i%2?r:r*0.44,t=a+i/(pts*2)*TAU,px=cx+Math.cos(t)*rr,py=cy+Math.sin(t)*rr;i?ctx.lineTo(px,py):ctx.moveTo(px,py);}ctx.closePath();ctx.stroke();ctx.beginPath();ctx.arc(cx,cy,r*0.12,0,TAU);ctx.fill();},
+  spiral(ctx,cx,cy,r,a,d,rnd,lw){ctx.lineWidth=lw;const turns=2+d*1.6,steps=52;ctx.beginPath();for(let i=0;i<=steps;i++){const f=i/steps,ang=a+f*TAU*turns,rr=r*f,px=cx+Math.cos(ang)*rr,py=cy+Math.sin(ang)*rr;i?ctx.lineTo(px,py):ctx.moveTo(px,py);}ctx.stroke();},
+  diamond(ctx,cx,cy,r,a,d,rnd,lw){ctx.lineWidth=lw;const rings=2+((d*2)|0),ca=Math.cos(a),sa=Math.sin(a),P0=(t,u)=>[cx+(t*ca-u*sa),cy+(t*sa+u*ca)];for(let k=1;k<=rings;k++){const rr=r*k/rings,A=P0(0,-rr),B=P0(rr,0),C=P0(0,rr),E=P0(-rr,0);ctx.beginPath();ctx.moveTo(A[0],A[1]);ctx.lineTo(B[0],B[1]);ctx.lineTo(C[0],C[1]);ctx.lineTo(E[0],E[1]);ctx.closePath();ctx.stroke();}ctx.beginPath();ctx.arc(cx,cy,r*0.1,0,TAU);ctx.fill();},
+  burst(ctx,cx,cy,r,a,d,rnd,lw){ctx.lineWidth=lw;const n=8+((d*8)|0);ctx.beginPath();for(let i=0;i<n;i++){const t=a+i/n*TAU;ctx.moveTo(cx,cy);ctx.quadraticCurveTo(cx+Math.cos(t+0.2)*r,cy+Math.sin(t+0.2)*r,cx+Math.cos(t)*r*0.68,cy+Math.sin(t)*r*0.68);}ctx.stroke();ctx.beginPath();ctx.arc(cx,cy,r*0.14,0,TAU);ctx.fill();},
+};
+
+const FLOW_KEYS=['ribbon','doubleRibbon','scales','feather','leaves','wave','dots','beads','weave','braid','herringbone','zigzag','ladder','fringe','ripple','pearls','loops','crosshatch','chain','rope','eyes','coil','scallop','chevron','sprig'];
+const FLOW_W={ribbon:3,doubleRibbon:2,scales:2,feather:2,leaves:2,wave:2,dots:1,beads:1,weave:1,braid:2,herringbone:2,zigzag:1,ladder:1,fringe:1,ripple:1,pearls:1,loops:1,crosshatch:2,chain:1,rope:1,eyes:1,coil:1,scallop:1,chevron:1,sprig:1};
+const TILE_KEYS=['rosette','floret','paisley','mandala','star','spiral','diamond','burst'];
+const NICE={ribbon:'Ribbons',doubleRibbon:'Tramlines',scales:'Scales',feather:'Feather',leaves:'Leaves',wave:'Waves',dots:'Stipple',beads:'Beads',weave:'Weave',braid:'Braid',herringbone:'Herring',zigzag:'Zigzag',ladder:'Ladder',fringe:'Fringe',ripple:'Ripple',pearls:'Pearls',loops:'Loops',crosshatch:'Crosshatch',chain:'Chain',rope:'Rope',eyes:'Eyes',coil:'Coil',scallop:'Scallop',chevron:'Chevron',sprig:'Sprig',rosette:'Rosette',floret:'Floret',paisley:'Paisley',mandala:'Mandala',star:'Star',spiral:'Spiral',diamond:'Diamond',burst:'Burst'};
+
+// -------- state --------
+const P={detail:700,aniso:2.4,compact:14,size:820,smooth:0,bands:6,gamma:1.15,ink:1.0,white:0.90,pscale:1.0,lw:1.0,jit:0.4,follow:true,
+  colorMode:'mono',inkA:'#141414',inkB:'#7a3b1f',hueSpan:180,imgSat:1.25,imgMix:1.0,paper:'#ffffff',
+  edges:true,et:0.24,ew:1.3,bounds:true,bw:0.9,seed:1,ex:2,customKind:'tile',customStrokes:[],
+  editMode:false,tool:'auto',toolScrawl:'ribbon',brush:0,overrides:{},
+  enabled:Object.fromEntries([...FLOW_KEYS,...TILE_KEYS].map(k=>[k,true]))};
+P.enabled.custom=false;
+let srcImage=null, seg=null, field=null, job=0;
+const cv=$('cv'),ctx=cv.getContext('2d');
+const ov=$('ov'),octx=ov.getContext('2d'),marksCanvas=document.createElement('canvas');
+let hoverIds=[],lastHoverSig='',painting=false,strokeSet=null;
+
+// -------- pipeline --------
+function toWorking(img){let w=img.width,h=img.height;const s=Math.min(1,P.size/Math.max(w,h));w=Math.max(2,Math.round(w*s));h=Math.max(2,Math.round(h*s));
+  const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);return c.getContext('2d').getImageData(0,0,w,h);}
+async function segment(){
+  if(!srcImage)return;const myjob=++job;P.overrides={};
+  showOverlay('Reading image…',0);await frame();if(myjob!==job)return;
+  const id=toWorking(srcImage),w=id.width,h=id.height,px=id.data,N=w*h;
+  const gray=new Float32Array(N),lab=new Float32Array(N*3);
+  for(let i=0;i<N;i++){const r=px[i*4],g=px[i*4+1],b=px[i*4+2];gray[i]=(0.299*r+0.587*g+0.114*b)/255;const L=rgb2lab(r,g,b);lab[i*3]=L[0];lab[i*3+1]=L[1];lab[i*3+2]=L[2];}
+  showOverlay('Building flow field…',0.12);await frame();if(myjob!==job)return;
+  field=buildField(gray,w,h);const edge=sobelMag(gray,w,h);
+  showOverlay('Carving ribbons…',0.28);await frame();if(myjob!==job)return;
+  const A=P.follow?P.aniso:1;let {labels,count}=slic(lab,field,w,h,P.detail,P.compact,10,A);
+  if(P.smooth>0){const S0=Math.max(2,Math.round(Math.sqrt(N/P.detail)));const sm=smoothLabels(labels,w,h,P.smooth,count);enforceConnectivity(sm,w,h,S0);labels.set(sm);count=relabelCount(labels);}
+  showOverlay('Measuring cells…',0.72);await frame();if(myjob!==job)return;
+  const cnt=new Float64Array(count),sumL=new Float64Array(count),cx=new Float64Array(count),cy=new Float64Array(count);
+  const sumR=new Float64Array(count),sumG=new Float64Array(count),sumB=new Float64Array(count);
+  const bx0=new Int32Array(count).fill(1e9),by0=new Int32Array(count).fill(1e9),bx1=new Int32Array(count).fill(-1),by1=new Int32Array(count).fill(-1);
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const p=y*w+x,l=labels[p];if(l<0)continue;cnt[l]++;sumL[l]+=gray[p];cx[l]+=x;cy[l]+=y;sumR[l]+=px[p*4];sumG[l]+=px[p*4+1];sumB[l]+=px[p*4+2];if(x<bx0[l])bx0[l]=x;if(x>bx1[l])bx1[l]=x;if(y<by0[l])by0[l]=y;if(y>by1[l])by1[l]=y;}
+  const regions=[];for(let l=0;l<count;l++){if(cnt[l]<=0)continue;const n=cnt[l],ccx=cx[l]/n,ccy=cy[l]/n;regions.push({id:l,n,mean:sumL[l]/n,srcR:sumR[l]/n,srcG:sumG[l]/n,srcB:sumB[l]/n,ang:fieldAngle(field,ccx,ccy),bx:bx0[l],by:by0[l],bw:bx1[l]-bx0[l]+1,bh:by1[l]-by0[l]+1});}
+  const map={};for(const r of regions)map[r.id]=r;
+  seg={w,h,labels,count,regions,edge,avgArea:N/Math.max(1,regions.length),map};
+  ov.width=w;ov.height=h;buildMarks();renderOverlay();hideOverlay();await render();
+}
+function densityFor(mean){const band=Math.round(mean*(P.bands-1))/(P.bands-1);if(band>=P.white)return 0;return clamp(Math.pow(1-band,P.gamma)*P.ink,0,1);}
+function hex2rgb(h){h=h.replace('#','');if(h.length===3)h=h.split('').map(c=>c+c).join('');const n=parseInt(h,16)||0;return [(n>>16)&255,(n>>8)&255,n&255];}
+function hex2hsl(h){const [r0,g0,b0]=hex2rgb(h).map(v=>v/255);const mx=Math.max(r0,g0,b0),mn=Math.min(r0,g0,b0);let hh,ss,ll=(mx+mn)/2;if(mx===mn){hh=ss=0;}else{const d=mx-mn;ss=ll>0.5?d/(2-mx-mn):d/(mx+mn);if(mx===r0)hh=(g0-b0)/d+(g0<b0?6:0);else if(mx===g0)hh=(b0-r0)/d+2;else hh=(r0-g0)/d+4;hh/=6;}return [hh*360,ss*100,ll*100];}
+function mixHex(h1,h2,t){const a=hex2rgb(h1),b=hex2rgb(h2),v=(x,y)=>clamp(Math.round(lerp(x,y,t)),0,255);return `rgb(${v(a[0],b[0])},${v(a[1],b[1])},${v(a[2],b[2])})`;}
+function inkColorFor(reg,d){
+  if(P.colorMode==='tone')return mixHex(P.inkB,P.inkA,clamp(d,0,1));
+  if(P.colorMode==='flow'){const [h0,s0,l0]=hex2hsl(P.inkA);const t=((reg.ang%TAU)+TAU)%TAU/TAU;const hue=(h0+t*P.hueSpan)%360;return `hsl(${hue.toFixed(1)},${s0.toFixed(0)}%,${l0.toFixed(0)}%)`;}
+  if(P.colorMode==='image'){
+    let r=reg.srcR,g=reg.srcG,b=reg.srcB;const amt=P.imgSat,avg=(r+g+b)/3;
+    r=avg+(r-avg)*amt;g=avg+(g-avg)*amt;b=avg+(b-avg)*amt;
+    const ia=hex2rgb(P.inkA),t=P.imgMix,mv=(x,y)=>clamp(Math.round(lerp(x,y,t)),0,255);
+    return `rgb(${mv(ia[0],r)},${mv(ia[1],g)},${mv(ia[2],b)})`;
+  }
+  return P.inkA;
+}
+function buildPools(){const out=[];
+  for(const k of FLOW_KEYS)if(P.enabled[k])for(let i=0;i<(FLOW_W[k]||1);i++)out.push({key:k,kind:'flow'});
+  for(const k of TILE_KEYS)if(P.enabled[k])out.push({key:k,kind:'tile'});
+  if(P.enabled.custom&&P.customStrokes.length){const kind=P.customKind==='flow'?'flowstamp':'customtile';out.push({key:'custom',kind});out.push({key:'custom',kind});}
+  return out;}
+function capFor(reg,dSep){return Math.min(500,40+((reg.n/(dSep*dSep))*4|0));}
+function stipple(pctx,reg,S,d,seedh){const n=Math.max(3,(reg.n*d/18)|0),rr=rng(seedh);for(let i=0;i<n;i++){pctx.beginPath();pctx.arc(rr()*reg.bw*S,rr()*reg.bh*S,lerp(0.7,1.6,d)*S,0,TAU);pctx.fill();}}
+
+function entryFor(key){if(key==='custom')return{key:'custom',kind:(P.customKind==='flow'?'flowstamp':'customtile')};if(TILE_KEYS.includes(key))return{key,kind:'tile'};return{key,kind:'flow'};}
+function curDensity(id){const o=P.overrides[id];if(o&&o.dens!=null)return o.dens;const reg=seg&&seg.map[id];return reg?densityFor(reg.mean):0;}
+function paintCell(pctx,reg,S,pools){
+  const ovr=P.overrides[reg.id];if(ovr&&ovr.blank)return false;
+  const d=ovr&&ovr.dens!=null?ovr.dens:(ovr&&ovr.scrawl?Math.max(densityFor(reg.mean),0.3):densityFor(reg.mean));
+  if(d<=0.008)return false;
+  pctx.strokeStyle=inkColorFor(reg,d);pctx.fillStyle=pctx.strokeStyle;pctx.lineJoin="round";pctx.lineCap="round";
+  const lw=P.lw*S,seedh=hash2(reg.id,P.seed),rnd=rng((seedh*2654435761)>>>0),ang=P.follow?reg.ang:0;
+  const entry=(ovr&&ovr.scrawl)?entryFor(ovr.scrawl):pools[seedh%pools.length];
+  if(!entry)return false;
+  if(entry.kind==='tile'||entry.kind==='customtile'){
+    const tsp=clamp(lerp(15,7.5,d)*P.pscale,4,40)*S,r=tsp*0.46;
+    tileGrid(reg.bw*S,reg.bh*S,tsp,(x,y)=>{const a=ang+(rnd()-0.5)*0.5;
+      if(entry.kind==='customtile')drawStrokes(pctx,P.customStrokes,x,y,r*2.0,a,lw);
+      else MOTIFS[entry.key](pctx,x,y,r,a,d,rnd,lw);});
+    return true;
+  }
+  if(entry.kind==='flowstamp'){
+    const dSep=clamp(lerp(13,5,d)*P.pscale,3,44);let lines=streamlines(field,reg.bx,reg.by,reg.bw,reg.bh,dSep,capFor(reg,dSep));
+    if(!lines.length){stipple(pctx,reg,S,d,seedh);return true;}
+    const size=dSep*1.7*S;for(const l of lines)walkLine(l,dSep*1.35,(x,y,ux,uy)=>{drawStrokes(pctx,P.customStrokes,x*S,y*S,size,Math.atan2(uy,ux),lw);});
+    return true;
+  }
+  const dSep=clamp(lerp(10.5,2.8,d)*P.pscale,2.0,44);let lines=streamlines(field,reg.bx,reg.by,reg.bw,reg.bh,dSep,capFor(reg,dSep));
+  if(!lines.length){stipple(pctx,reg,S,d,seedh);return true;}
+  DECORS[entry.key](pctx,lines,d,dSep,S,rnd,lw);return true;
+}
+
+function maskScaled(canvas,reg,S){const {w,h,labels}=seg,{bx,by,id}=reg,W=canvas.width,H=canvas.height,tc=canvas.getContext('2d');
+  const img=tc.getImageData(0,0,W,H),data=img.data;
+  for(let yy=0;yy<H;yy++){const byi=clamp((by+yy/S)|0,0,h-1),row=byi*w;for(let xx=0;xx<W;xx++){const bxi=clamp((bx+xx/S)|0,0,w-1);if(labels[row+bxi]!==id)data[(yy*W+xx)*4+3]=0;}}
+  tc.putImageData(img,0,0);}
+
+let curRS=1;
+async function renderAll(octx,S,live){
+  const {w,h,regions,labels,edge}=seg;const pools=buildPools();const myjob=live?++job:job;
+  const SS=(live&&P.smooth>0)?2:1,RS=S*SS;if(live)curRS=RS;
+  if(live){cv.width=w*RS;cv.height=h*RS;}
+  octx.setTransform(1,0,0,1,0,0);octx.fillStyle=P.paper;octx.fillRect(0,0,w*RS,h*RS);octx.lineJoin="round";octx.lineCap="round";
+  const t0=performance.now();let done=0;
+  for(const reg of regions){const W=Math.max(1,reg.bw*RS),H=Math.max(1,reg.bh*RS);
+    const pc=document.createElement('canvas');pc.width=W;pc.height=H;
+    const painted=paintCell(pc.getContext('2d'),reg,RS,pools);
+    if(painted){maskScaled(pc,reg,RS);octx.drawImage(pc,reg.bx*RS,reg.by*RS);}
+    if(live&&(++done%40)===0){showOverlay('Drawing scrawls…',0.1+0.85*done/regions.length,true);await frame();if(myjob!==job)return;}}
+  const drawBounds=(g,f)=>{if(!P.bounds)return;g.fillStyle=P.inkA;const bw=P.bw*f;for(let y=0;y<h;y++)for(let x=0;x<w;x++){const p=y*w+x,l=labels[p];if((x<w-1&&labels[p+1]!==l)||(y<h-1&&labels[p+w]!==l))g.fillRect(x*f-(bw-1)/2,y*f-(bw-1)/2,bw,bw);}};
+  const drawEdges=(g,f)=>{if(!P.edges)return;g.fillStyle=P.inkA;const ew=P.ew*f;for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(edge[y*w+x]>P.et)g.fillRect(x*f-(ew-1)/2,y*f-(ew-1)/2,ew,ew);};
+  drawBounds(octx,RS);drawEdges(octx,RS);
+  if(live){hideOverlay();setStatus(regions.length,performance.now()-t0);}
+}
+function render(){return renderAll(ctx,1,true);}
+
+// -------- export --------
+function exportPNG(){if(!seg)return;const S=P.ex;showOverlay('Rendering '+S+'× PNG…',0.5);
+  const c=document.createElement('canvas');c.width=seg.w*S;c.height=seg.h*S;
+  setTimeout(async()=>{await renderAll(c.getContext('2d'),S,false);c.toBlob(b=>{const a=document.createElement('a');a.download='scrawlery.png';a.href=URL.createObjectURL(b);a.click();setTimeout(()=>{try{URL.revokeObjectURL(a.href);}catch(_){}},2000);hideOverlay();},'image/png');},30);}
+
+function showOverlay(msg,p){$('overlay').classList.add('on');$('omsg').textContent=msg;$('obar').style.width=Math.round((p||0)*100)+'%';}
+function hideOverlay(){$('overlay').classList.remove('on');}
+function setStatus(n,ms){$('status').innerHTML=`<b>${n}</b> cells · ${(ms/1000).toFixed(1)}s · ${seg.w}×${seg.h}`;}
+const frame=()=>new Promise(r=>setTimeout(r,0));
+
+// -------- sample --------
+function makeSample(){const c=document.createElement('canvas');c.width=640;c.height=640;const g=c.getContext('2d');
+  const bg=g.createRadialGradient(320,300,60,320,300,460);bg.addColorStop(0,'#e9e4d6');bg.addColorStop(1,'#cfc7b3');g.fillStyle=bg;g.fillRect(0,0,640,640);
+  const grad=g.createRadialGradient(250,240,20,330,320,300);grad.addColorStop(0,'#fbfbf7');grad.addColorStop(0.5,'#8f8674');grad.addColorStop(1,'#241f18');g.fillStyle=grad;g.beginPath();g.ellipse(330,330,220,250,0,0,TAU);g.fill();
+  g.fillStyle='#17130d';g.beginPath();g.ellipse(270,280,26,18,-.3,0,TAU);g.fill();g.beginPath();g.ellipse(390,300,26,18,.3,0,TAU);g.fill();
+  g.strokeStyle='#241d14';g.lineWidth=10;g.beginPath();g.moveTo(300,420);g.quadraticCurveTo(340,450,392,420);g.stroke();
+  g.strokeStyle='rgba(30,24,16,.5)';g.lineWidth=6;for(let i=0;i<9;i++){g.beginPath();g.moveTo(150+i*10,180);g.quadraticCurveTo(330,220+i*22,520-i*8,300+i*18);g.stroke();}
+  const img=new Image();img.src=c.toDataURL();return img;}
+
+// -------- UI --------
+const debounce=(fn,ms)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);};};
+const restyle=debounce(()=>{if(seg)render();},160);
+const resegment=debounce(()=>{if(srcImage)segment();},360);
+function bindRange(id,key,fmt,after){const el=$(id),out=$('v_'+id);const show=()=>out.textContent=fmt?fmt(P[key]):P[key];el.value=P[key];show();el.addEventListener('input',()=>{P[key]=parseFloat(el.value);show();if(after)after();});}
+bindRange('detail','detail',v=>v,resegment);bindRange('aniso','aniso',v=>v.toFixed(1),resegment);bindRange('compact','compact',v=>v,resegment);bindRange('smooth','smooth',v=>v,resegment);bindRange('size','size',v=>v,resegment);
+bindRange('bands','bands',v=>v,restyle);bindRange('gamma','gamma',v=>v.toFixed(2),restyle);bindRange('ink','ink',v=>v.toFixed(2),restyle);bindRange('white','white',v=>v.toFixed(2),restyle);
+bindRange('pscale','pscale',v=>v.toFixed(2),restyle);bindRange('lw','lw',v=>v.toFixed(1),restyle);bindRange('jit','jit',v=>v.toFixed(2),restyle);
+bindRange('et','et',v=>v.toFixed(2),restyle);bindRange('ew','ew',v=>v.toFixed(1),restyle);bindRange('bw','bw',v=>v.toFixed(1),restyle);
+bindRange('seed','seed',v=>v,restyle);bindRange('ex','ex',v=>v+'×',null);
+$('follow').addEventListener('change',e=>{P.follow=e.target.checked;resegment();});
+$('edges').addEventListener('change',e=>{P.edges=e.target.checked;restyle();});
+$('bounds').addEventListener('change',e=>{P.bounds=e.target.checked;restyle();});
+bindRange('hueSpan','hueSpan',v=>v,restyle);
+bindRange('imgMix','imgMix',v=>v.toFixed(2),restyle);
+bindRange('imgSat','imgSat',v=>v.toFixed(2),restyle);
+function updateColorUI(){const m=P.colorMode;$('inkBwrap').style.display=(m==='tone')?'flex':'none';$('hueSpanRow').style.display=(m==='flow')?'block':'none';$('imageColorRows').style.display=(m==='image')?'block':'none';}
+$('colorMode').value=P.colorMode;updateColorUI();
+$('colorMode').addEventListener('change',e=>{P.colorMode=e.target.value;updateColorUI();restyle();});
+$('inkA').value=P.inkA;$('inkA').addEventListener('input',e=>{P.inkA=e.target.value;restyle();});
+$('inkB').value=P.inkB;$('inkB').addEventListener('input',e=>{P.inkB=e.target.value;restyle();});
+$('paper').value=P.paper;$('paper').addEventListener('input',e=>{P.paper=e.target.value;restyle();});
+
+function fillPatGrid(grid,keys){const el=$(grid);keys.forEach(k=>{const l=document.createElement('label');l.className='chk';l.innerHTML=`<input type="checkbox" class="patchk" checked> ${NICE[k]||k}`;const inp=l.querySelector('input');inp.dataset.key=k;inp.addEventListener('change',e=>{P.enabled[k]=e.target.checked;restyle();});el.appendChild(l);});}
+fillPatGrid('flowgrid',FLOW_KEYS);fillPatGrid('tilegrid',TILE_KEYS);
+function setGroup(keys,on){for(const k of keys)P.enabled[k]=on;document.querySelectorAll('.patchk').forEach(inp=>{if(keys.indexOf(inp.dataset.key)>=0)inp.checked=on;});restyle();}
+document.querySelectorAll('.subhd .mini').forEach(b=>b.addEventListener('click',()=>setGroup(b.dataset.grp==='flow'?FLOW_KEYS:TILE_KEYS,b.dataset.act==='all')));
+
+// custom scrawl pad
+const stamp=$('stamp'),sctx=stamp.getContext('2d');let drawing=false,cur=null;
+function drawStampPreview(extra){const w=stamp.width,h=stamp.height;sctx.clearRect(0,0,w,h);sctx.fillStyle="#fff";sctx.fillRect(0,0,w,h);
+  sctx.strokeStyle="#e6e6e6";sctx.lineWidth=1;for(let i=1;i<4;i++){sctx.beginPath();sctx.moveTo(w*i/4,0);sctx.lineTo(w*i/4,h);sctx.moveTo(0,h*i/4);sctx.lineTo(w,h*i/4);sctx.stroke();}
+  sctx.strokeStyle="#111";sctx.lineWidth=2;sctx.lineJoin="round";sctx.lineCap="round";
+  const all=extra?P.customStrokes.concat([extra]):P.customStrokes;
+  for(const st of all){if(!st||!st.length)continue;sctx.beginPath();st.forEach((p,i)=>{const x=p[0]*w,y=p[1]*h;i?sctx.lineTo(x,y):sctx.moveTo(x,y);});if(st.length===1){sctx.arc(st[0][0]*w,st[0][1]*h,1.5,0,TAU);sctx.fill();}else sctx.stroke();}}
+function padPt(e){const r=stamp.getBoundingClientRect();const cxp=(e.touches?e.touches[0].clientX:e.clientX)-r.left,cyp=(e.touches?e.touches[0].clientY:e.clientY)-r.top;return [clamp(cxp/(r.width||1),0,1),clamp(cyp/(r.height||1),0,1)];}
+function enableCustom(){P.enabled.custom=true;$('en_custom').checked=true;}
+stamp.addEventListener('pointerdown',e=>{e.preventDefault();drawing=true;cur=[padPt(e)];drawStampPreview(cur);});
+stamp.addEventListener('pointermove',e=>{if(!drawing)return;cur.push(padPt(e));drawStampPreview(cur);});
+window.addEventListener('pointerup',()=>{if(!drawing)return;drawing=false;if(cur&&cur.length){P.customStrokes.push(cur);enableCustom();}cur=null;drawStampPreview();restyle();});
+$('clearStamp').onclick=()=>{P.customStrokes=[];drawStampPreview();restyle();};
+$('undoStamp').onclick=()=>{P.customStrokes.pop();drawStampPreview();restyle();};
+$('en_custom').addEventListener('change',e=>{P.enabled.custom=e.target.checked;restyle();});
+$('customKind').addEventListener('change',e=>{P.customKind=e.target.value;restyle();});
+drawStampPreview();
+
+// -------- manual cell editing --------
+function buildMarks(){if(!seg)return;const {w,h,labels}=seg;marksCanvas.width=w;marksCanvas.height=h;const mc=marksCanvas.getContext('2d');mc.clearRect(0,0,w,h);
+  const ids=Object.keys(P.overrides);if(!ids.length)return;const img=mc.createImageData(w,h),dt=img.data;
+  for(const s of ids){const id=+s,reg=seg.map[id];if(!reg)continue;const o=P.overrides[id],col=o.blank?[220,60,60,90]:(o.scrawl&&o.dens!=null)?[150,110,220,95]:(o.scrawl?[80,150,255,80]:[80,180,120,80]);
+    for(let yy=0;yy<reg.bh;yy++){const row=(reg.by+yy)*w;for(let xx=0;xx<reg.bw;xx++){const x=reg.bx+xx;if(labels[row+x]===id){const q=(row+x)*4;dt[q]=col[0];dt[q+1]=col[1];dt[q+2]=col[2];dt[q+3]=col[3];}}}}
+  mc.putImageData(img,0,0);}
+function hoverCanvas(reg){const {w,labels}=seg,c=document.createElement('canvas');c.width=reg.bw;c.height=reg.bh;const cc=c.getContext('2d'),img=cc.createImageData(reg.bw,reg.bh),dt=img.data;
+  for(let yy=0;yy<reg.bh;yy++){const row=(reg.by+yy)*w;for(let xx=0;xx<reg.bw;xx++){if(labels[row+reg.bx+xx]===reg.id){const q=(yy*reg.bw+xx)*4;dt[q]=232;dt[q+1]=193;dt[q+2]=74;dt[q+3]=120;}}}
+  cc.putImageData(img,0,0);return c;}
+function renderOverlay(){if(!ov)return;octx.clearRect(0,0,ov.width,ov.height);if(!P.editMode||!seg)return;octx.drawImage(marksCanvas,0,0);
+  for(const id of hoverIds){const reg=seg.map[id];if(reg)octx.drawImage(hoverCanvas(reg),reg.bx,reg.by);}}
+function pointIxy(clientX,clientY){if(!seg)return null;const r=cv.getBoundingClientRect();if(!r.width||!r.height)return null;const nx=(clientX-r.left)/r.width,ny=(clientY-r.top)/r.height;if(nx<0||ny<0||nx>1||ny>1)return null;return [clamp(nx*seg.w|0,0,seg.w-1),clamp(ny*seg.h|0,0,seg.h-1)];}
+function brushCells(ix,iy){const {w,h,labels}=seg,R=P.brush|0,center=labels[iy*w+ix];if(R<=0)return center>=0?[center]:[];const set=new Set(),R2=R*R;
+  for(let dy=-R;dy<=R;dy++){const y=iy+dy;if(y<0||y>=h)continue;for(let dx=-R;dx<=R;dx++){if(dx*dx+dy*dy>R2)continue;const x=ix+dx;if(x<0||x>=w)continue;const l=labels[y*w+x];if(l>=0)set.add(l);}}return [...set];}
+function repaintCells(ids){if(!seg)return;const {w,h,labels,edge}=seg,pools=buildPools(),RS=curRS,[pr,pg,pb]=hex2rgb(P.paper);
+  for(const id of ids){const reg=seg.map[id];if(!reg)continue;const {bx,by,bw:W,bh:H}=reg;
+    const DX=(bx*RS)|0,DY=(by*RS)|0,DW=Math.max(1,(W*RS)|0),DH=Math.max(1,(H*RS)|0);
+    const img=ctx.getImageData(DX,DY,DW,DH),dt=img.data;
+    for(let yy=0;yy<DH;yy++){const syy=(yy/RS)|0,row=(by+syy)*w;for(let xx=0;xx<DW;xx++){const sxx=(xx/RS)|0;if(labels[row+bx+sxx]===id){const q=(yy*DW+xx)*4;dt[q]=pr;dt[q+1]=pg;dt[q+2]=pb;dt[q+3]=255;}}}
+    ctx.putImageData(img,DX,DY);
+    const pc=document.createElement('canvas');pc.width=DW;pc.height=DH;
+    if(paintCell(pc.getContext('2d'),reg,RS,pools)){maskScaled(pc,reg,RS);ctx.drawImage(pc,DX,DY);}
+    if(P.bounds){ctx.fillStyle=P.inkA;const bw=P.bw*RS;for(let yy=0;yy<H;yy++){const y=by+yy;for(let xx=0;xx<W;xx++){const x=bx+xx,p=y*w+x,l=labels[p];if((x<w-1&&labels[p+1]!==l)||(y<h-1&&labels[p+w]!==l))ctx.fillRect(x*RS-(bw-1)/2,y*RS-(bw-1)/2,bw,bw);}}}
+    if(P.edges){ctx.fillStyle=P.inkA;const ew=P.ew*RS;for(let yy=0;yy<H;yy++){const y=by+yy;for(let xx=0;xx<W;xx++){const x=bx+xx;if(edge[y*w+x]>P.et)ctx.fillRect(x*RS-(ew-1)/2,y*RS-(ew-1)/2,ew,ew);}}}}
+}
+function setOverride(id){if(id==null||id<0||!seg)return false;const t=P.tool,cur=P.overrides[id]||{};
+  if(t==='auto'){if(!(id in P.overrides))return false;delete P.overrides[id];}
+  else if(t==='blank')P.overrides[id]={blank:true};
+  else if(t==='scrawl')P.overrides[id]={...cur,blank:false,scrawl:P.toolScrawl};
+  else if(t==='darker')P.overrides[id]={...cur,blank:false,dens:clamp(curDensity(id)+0.22,0.06,1)};
+  else if(t==='lighter'){const nd=clamp(curDensity(id)-0.22,0,1);P.overrides[id]=nd<=0.02?{blank:true}:{...cur,blank:false,dens:nd};}
+  return true;}
+function applyTool(ids){if(!Array.isArray(ids))ids=[ids];const changed=[];for(const id of ids)if(setOverride(id))changed.push(id);if(!changed.length)return;buildMarks();renderOverlay();repaintCells(changed);}
+function paintFootprint(fp){const fresh=fp.filter(id=>!strokeSet.has(id));for(const id of fresh)strokeSet.add(id);if(fresh.length)applyTool(fresh);}
+function setTool(t){P.tool=t;document.querySelectorAll('#edittools .toolrow button').forEach(b=>b.classList.toggle('sel',b.dataset.tool===t));$('toolScrawl').style.display=(t==='scrawl')?'block':'none';}
+function setEditMode(on){P.editMode=on;$('cvwrap').classList.toggle('edit',on);$('edittools').classList.toggle('on',on);$('editToggle').textContent='Edit cells: '+(on?'On':'Off');$('editToggle').classList.toggle('primary',on);hoverIds=[];lastHoverSig='';renderOverlay();}
+document.querySelectorAll('#edittools .toolrow button').forEach(b=>b.addEventListener('click',()=>setTool(b.dataset.tool)));
+(function(){const sel=$('toolScrawl');[...FLOW_KEYS,...TILE_KEYS,'custom'].forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=(k==='custom'?'My scrawl':(NICE[k]||k));sel.appendChild(o);});sel.value='ribbon';sel.style.display='none';sel.addEventListener('change',e=>{P.toolScrawl=e.target.value;setTool('scrawl');});})();
+$('editToggle').onclick=()=>setEditMode(!P.editMode);
+bindRange('brush','brush',v=>v===0?'1 cell':(v+'px'),null);
+$('clearEdits').onclick=()=>{P.overrides={};buildMarks();renderOverlay();if(seg)render();};
+cv.addEventListener('pointerdown',e=>{if(!P.editMode)return;e.preventDefault();painting=true;strokeSet=new Set();const p=pointIxy(e.clientX,e.clientY);if(p){hoverIds=brushCells(p[0],p[1]);lastHoverSig=hoverIds.join(',');renderOverlay();paintFootprint(hoverIds);}});
+cv.addEventListener('pointermove',e=>{if(!P.editMode)return;const p=pointIxy(e.clientX,e.clientY),fp=p?brushCells(p[0],p[1]):[];const sig=fp.join(',');if(sig!==lastHoverSig){lastHoverSig=sig;hoverIds=fp;renderOverlay();}if(painting&&fp.length)paintFootprint(fp);});
+cv.addEventListener('pointerleave',()=>{if(P.editMode){hoverIds=[];lastHoverSig='';renderOverlay();}});
+window.addEventListener('pointerup',()=>{if(painting){painting=false;strokeSet=null;}});
+
+$('reroll').onclick=$('reroll2').onclick=()=>{P.seed=(P.seed%999)+1;$('seed').value=P.seed;$('v_seed').textContent=P.seed;restyle();};
+$('regen').onclick=$('regen2').onclick=()=>segment();
+$('save').onclick=exportPNG;
+$('loadBtn').onclick=()=>$('file').click();
+$('sampleBtn').onclick=()=>{srcImage=makeSample();if(srcImage.complete)segment();else srcImage.onload=()=>segment();};
+$('file').addEventListener('change',e=>{const f=e.target.files[0];if(f)loadFile(f);});
+function loadFile(file){const img=new Image();img.onload=()=>{srcImage=img;segment();};img.src=URL.createObjectURL(file);}
+
+const view=$('view'),drop=$('drop');
+['dragenter','dragover'].forEach(ev=>view.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('on');}));
+view.addEventListener('dragleave',e=>{if(e.target===view)drop.classList.remove('on');});
+view.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('on');const f=[...e.dataTransfer.files].find(f=>f.type.startsWith('image/'));if(f)loadFile(f);});
+window.addEventListener('paste',e=>{const it=[...e.clipboardData.items].find(i=>i.type.startsWith('image/'));if(it)loadFile(it.getAsFile());});
+
+// scripting API (draw motifs programmatically; each stroke is points in 0..1)
+window.Scrawlery={
+  addStroke(points){if(Array.isArray(points)&&points.length){P.customStrokes.push(points.map(p=>[clamp(p[0],0,1),clamp(p[1],0,1)]));enableCustom();drawStampPreview();restyle();}},
+  clearCustom(){P.customStrokes=[];drawStampPreview();restyle();},
+  setCustomKind(k){P.customKind=(k==='flow'?'flow':'tile');$('customKind').value=P.customKind;restyle();},
+  regenerate(){return segment();}, restyle(){return render();},
+  setEditMode(on){setEditMode(!!on);},
+  setTool(t,scrawl){if(scrawl){P.toolScrawl=scrawl;$('toolScrawl').value=scrawl;}setTool(t);},
+  setBrush(px){P.brush=clamp(px|0,0,60);const el=$('brush');if(el){el.value=P.brush;$('v_brush').textContent=P.brush===0?'1 cell':(P.brush+'px');}},
+  paintAt(nx,ny){if(!seg)return -1;const ix=clamp(nx*seg.w|0,0,seg.w-1),iy=clamp(ny*seg.h|0,0,seg.h-1),fp=brushCells(ix,iy);applyTool(fp);return seg.labels[iy*seg.w+ix];},
+  overrideCount(){return Object.keys(P.overrides).length;},
+  get params(){return P;}
+};
+
+$('sampleBtn').click();
+})();
+</script>
+</body>
+</html>
