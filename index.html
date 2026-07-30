@@ -179,7 +179,10 @@
 
     <div class="grp">
       <div class="lbl">Output</div>
-      <div class="row"><div class="top"><label>Pattern seed</label><span class="val" id="v_seed">1</span></div><input type="range" id="seed" min="1" max="999" step="1" value="1"></div>
+      <div class="row"><div class="top"><label>Cell layout seed</label><span class="val" id="v_cellSeed">1</span></div><input type="range" id="cellSeed" min="1" max="999" step="1" value="1"></div>
+      <div class="row"><div class="top"><label>Pattern seed</label><span class="val" id="v_seed">1</span></div>
+        <div style="display:flex;gap:8px;align-items:center"><input type="range" id="seed" min="1" max="999" step="1" value="1" style="flex:1"><button id="randSeed" title="New random cell layout + pattern" style="padding:5px 10px;font-size:11px;border-radius:6px;background:var(--panel2);color:var(--text);border:1px solid var(--line);cursor:pointer;white-space:nowrap">🎲 Randomize</button></div>
+      </div>
       <div class="btnrow"><button id="reroll">Re-roll patterns</button><button id="regen">Regenerate</button></div>
       <div class="row" style="margin-top:12px"><div class="top"><label>Export scale</label><span class="val" id="v_ex">2×</span></div><input type="range" id="ex" min="1" max="4" step="1" value="2"></div>
       <div class="btnrow"><button class="primary" id="save">Save PNG</button></div>
@@ -273,9 +276,11 @@ function streamlines(fld,bx,by,bw,bh,dSep,maxLines){
   return lines;}
 
 // -------- SLIC (flow-anisotropic) --------
-function slic(lab,fld,w,h,K,m,iters,A){
-  const N=w*h,S=Math.max(2,Math.round(Math.sqrt(N/K))),centers=[];
-  for(let y=S/2|0;y<h;y+=S)for(let x=S/2|0;x<w;x+=S){const i=(y*w+x)*3;centers.push({x,y,l:lab[i],a:lab[i+1],b:lab[i+2]});}
+function slic(lab,fld,w,h,K,m,iters,A,jseed){
+  const N=w*h,S=Math.max(2,Math.round(Math.sqrt(N/K))),centers=[],jr=rng((jseed||1)*2654435761>>>0),jamt=S*0.4;
+  for(let y=S/2|0;y<h;y+=S)for(let x=S/2|0;x<w;x+=S){
+    const jx=Math.max(0,Math.min(w-1,Math.round(x+(jr()*2-1)*jamt))),jy=Math.max(0,Math.min(h-1,Math.round(y+(jr()*2-1)*jamt)));
+    const i=(jy*w+jx)*3;centers.push({x:jx,y:jy,l:lab[i],a:lab[i+1],b:lab[i+2]});}
   const labels=new Int32Array(N).fill(-1),dist=new Float32Array(N).fill(Infinity),invS2=1/(S*S),m2=m*m,R=Math.ceil(S*Math.sqrt(A)*1.7);
   for(let it=0;it<iters;it++){dist.fill(Infinity);
     for(let c=0;c<centers.length;c++){const C=centers[c];const ph=A>1.001?fieldAngle(fld,C.x,C.y):0,ca=Math.cos(ph),sa=Math.sin(ph);
@@ -377,7 +382,7 @@ const TILE_KEYS=['rosette','floret','paisley','mandala','star','spiral','diamond
 const NICE={ribbon:'Ribbons',doubleRibbon:'Tramlines',scales:'Scales',feather:'Feather',leaves:'Leaves',wave:'Waves',dots:'Stipple',beads:'Beads',weave:'Weave',braid:'Braid',herringbone:'Herring',zigzag:'Zigzag',ladder:'Ladder',fringe:'Fringe',ripple:'Ripple',pearls:'Pearls',loops:'Loops',crosshatch:'Crosshatch',chain:'Chain',rope:'Rope',eyes:'Eyes',coil:'Coil',scallop:'Scallop',chevron:'Chevron',sprig:'Sprig',rosette:'Rosette',floret:'Floret',paisley:'Paisley',mandala:'Mandala',star:'Star',spiral:'Spiral',diamond:'Diamond',burst:'Burst'};
 
 // -------- state --------
-const P={detail:700,aniso:2.4,compact:14,size:820,smooth:0,bands:6,gamma:1.15,ink:1.0,white:0.90,pscale:1.0,lw:1.0,jit:0.4,follow:true,
+const P={detail:700,aniso:2.4,compact:14,size:820,smooth:0,bands:6,gamma:1.15,ink:1.0,white:0.90,pscale:1.0,lw:1.0,jit:0.4,follow:true,cellSeed:1,
   colorMode:'mono',inkA:'#141414',inkB:'#7a3b1f',hueSpan:180,imgSat:1.25,imgMix:1.0,paper:'#ffffff',
   edges:true,et:0.24,ew:1.3,bounds:true,bw:0.9,seed:1,ex:2,customKind:'tile',customStrokes:[],
   editMode:false,tool:'auto',toolScrawl:'ribbon',brush:0,overrides:{},
@@ -400,7 +405,7 @@ async function segment(){
   showOverlay('Building flow field…',0.12);await frame();if(myjob!==job)return;
   field=buildField(gray,w,h);const edge=sobelMag(gray,w,h);
   showOverlay('Carving ribbons…',0.28);await frame();if(myjob!==job)return;
-  const A=P.follow?P.aniso:1;let {labels,count}=slic(lab,field,w,h,P.detail,P.compact,10,A);
+  const A=P.follow?P.aniso:1;let {labels,count}=slic(lab,field,w,h,P.detail,P.compact,10,A,P.cellSeed);
   if(P.smooth>0){const S0=Math.max(2,Math.round(Math.sqrt(N/P.detail)));const sm=smoothLabels(labels,w,h,P.smooth,count);enforceConnectivity(sm,w,h,S0);labels.set(sm);count=relabelCount(labels);}
   showOverlay('Measuring cells…',0.72);await frame();if(myjob!==job)return;
   const cnt=new Float64Array(count),sumL=new Float64Array(count),cx=new Float64Array(count),cy=new Float64Array(count);
@@ -516,6 +521,13 @@ bindRange('bands','bands',v=>v,restyle);bindRange('gamma','gamma',v=>v.toFixed(2
 bindRange('pscale','pscale',v=>v.toFixed(2),restyle);bindRange('lw','lw',v=>v.toFixed(1),restyle);bindRange('jit','jit',v=>v.toFixed(2),restyle);
 bindRange('et','et',v=>v.toFixed(2),restyle);bindRange('ew','ew',v=>v.toFixed(1),restyle);bindRange('bw','bw',v=>v.toFixed(1),restyle);
 bindRange('seed','seed',v=>v,restyle);bindRange('ex','ex',v=>v+'×',null);
+bindRange('cellSeed','cellSeed',v=>v,resegment);
+$('randSeed').addEventListener('click',()=>{
+  const s=1+Math.floor(Math.random()*999),cs=1+Math.floor(Math.random()*999);
+  P.seed=s;$('seed').value=s;$('v_seed').textContent=s;
+  P.cellSeed=cs;$('cellSeed').value=cs;$('v_cellSeed').textContent=cs;
+  resegment();
+});
 $('follow').addEventListener('change',e=>{P.follow=e.target.checked;resegment();});
 $('edges').addEventListener('change',e=>{P.edges=e.target.checked;restyle();});
 $('bounds').addEventListener('change',e=>{P.bounds=e.target.checked;restyle();});
