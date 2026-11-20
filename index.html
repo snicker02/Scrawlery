@@ -99,6 +99,7 @@
     #ctrls{padding:4px 14px calc(22px + env(safe-area-inset-bottom))}
     #bar{height:auto;flex:0 0 auto;min-height:48px;padding:4px 8px;gap:6px}
     #bar .status{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px}
+    #bar button{white-space:nowrap;padding:8px 10px;flex:none}
     #view{padding:10px}
     #overlay .prog{width:min(220px,70vw)}
   }
@@ -109,14 +110,31 @@
     #panel header p{display:none}
     #view{padding:8px}
   }
+
+  /* tab bar (phones only; body.tabbed is set from the same media query in JS) */
+  #tabbar{display:none}
+  body.tabbed #panel header{display:none}
+  body.tabbed #tabbar{display:flex;gap:6px;overflow-x:auto;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--panel);flex:0 0 auto;scrollbar-width:none}
+  body.tabbed #tabbar::-webkit-scrollbar{display:none}
+  #tabbar .tab{flex:none;white-space:nowrap;border-radius:999px;padding:0 14px;min-height:36px;font-size:11.5px;color:var(--dim)}
+  #tabbar .tab.sel{background:var(--accent);border-color:var(--accent);color:#1a1400;font-weight:600}
+  body.tabbed #ctrls > .grp{display:none;margin-top:10px}
+  body.tabbed #ctrls > .grp.tabon{display:block}
+  body.tabbed #ctrls > .grp > .lbl{display:none}
+  body.tabbed #ctrls > .grp.tabon + .grp.tabon > .lbl{display:block;margin-top:14px}
+  #applyBtn:disabled{opacity:.45;cursor:default}
 </style>
 </head>
 <body>
 <div id="panel">
   <header><h1>Scrawlery</h1><p>flow-field line art from any image</p></header>
   <div id="ctrls">
+    <div class="grp" id="grpImage" data-tab="Image">
     <div class="btnrow"><button id="loadBtn">Load image</button><button id="sampleBtn">Sample</button></div>
     <div class="hint"><span class="mouse-only">Drag an image onto the canvas, or paste with ⌘V.</span><span class="touch-only">Tap Load image to pick a photo or take one with the camera.</span></div>
+    <label class="chk" style="margin-top:12px"><input type="checkbox" id="confirmMode" checked> Confirm changes before applying</label>
+    <div class="hint">When on, slider and option changes wait until you press <b>Apply</b> (or Enter). Buttons like Re-roll still act right away.</div>
+    </div>
 
     <div class="grp">
       <div class="lbl">Cells — the ribbons</div>
@@ -229,7 +247,7 @@
 
 <div id="stage">
   <div id="bar">
-    <button id="regen2">Regenerate</button><button id="reroll2">Re-roll</button>
+    <button id="applyBtn" disabled title="Apply pending changes (Enter)">Apply</button><button id="regen2">Regenerate</button><button id="reroll2">Re-roll</button>
     <div class="sp"></div>
     <div class="status" id="status">Load an image or hit <b>Sample</b> to begin.</div>
   </div>
@@ -550,35 +568,45 @@ function makeSample(){const c=document.createElement('canvas');c.width=640;c.hei
 
 // -------- UI --------
 const debounce=(fn,ms)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);};};
-const restyle=debounce(()=>{if(seg)render();},160);
-const resegment=debounce(()=>{if(srcImage)segment();},360);
+const restyleNow=debounce(()=>{if(seg)render();},160);
+const resegmentNow=debounce(()=>{if(srcImage)segment();},360);
+// Buttons (Re-roll, Randomize, stamp edits…) act immediately and pick up any pending slider changes.
+const restyle=()=>{pend.style=false;if(!pend.seg)updatePending();restyleNow();};
+const resegment=()=>{pend.seg=pend.style=false;updatePending();resegmentNow();};
+// Controls go through the confirm gate: with "Confirm changes" on they wait for Apply / Enter.
+const pend={seg:false,style:false};
+let confirmMode=true;try{const v=localStorage.getItem('scrawlery.confirm');if(v!==null)confirmMode=v==='1';}catch(_){}
+const restyleQ=()=>{if(confirmMode&&seg){pend.style=true;updatePending();}else restyle();};
+const resegmentQ=()=>{if(confirmMode&&srcImage){pend.seg=true;updatePending();}else resegment();};
+function updatePending(){const on=pend.seg||pend.style,b=$('applyBtn');if(!b)return;b.disabled=!on;b.classList.toggle('primary',on);b.textContent=on?(pend.seg?'Apply (re-segment)':'Apply changes'):'Apply';}
+function applyPending(){if(pend.seg)resegment();else if(pend.style)restyle();}
 function bindRange(id,key,fmt,after){const el=$(id),out=$('v_'+id);const show=()=>out.textContent=fmt?fmt(P[key]):P[key];el.value=P[key];show();el.addEventListener('input',()=>{P[key]=parseFloat(el.value);show();if(after)after();});}
-bindRange('detail','detail',v=>v,resegment);bindRange('aniso','aniso',v=>v.toFixed(1),resegment);bindRange('compact','compact',v=>v,resegment);bindRange('smooth','smooth',v=>v,resegment);bindRange('size','size',v=>v,resegment);
-bindRange('bands','bands',v=>v,restyle);bindRange('gamma','gamma',v=>v.toFixed(2),restyle);bindRange('ink','ink',v=>v.toFixed(2),restyle);bindRange('white','white',v=>v.toFixed(2),restyle);
-bindRange('pscale','pscale',v=>v.toFixed(2),restyle);bindRange('lw','lw',v=>v.toFixed(1),restyle);bindRange('jit','jit',v=>v.toFixed(2),restyle);
-bindRange('et','et',v=>v.toFixed(2),restyle);bindRange('ew','ew',v=>v.toFixed(1),restyle);bindRange('bw','bw',v=>v.toFixed(1),restyle);
-bindRange('seed','seed',v=>v,restyle);bindRange('ex','ex',v=>v+'×',null);
-bindRange('cellSeed','cellSeed',v=>v,resegment);
+bindRange('detail','detail',v=>v,resegmentQ);bindRange('aniso','aniso',v=>v.toFixed(1),resegmentQ);bindRange('compact','compact',v=>v,resegmentQ);bindRange('smooth','smooth',v=>v,resegmentQ);bindRange('size','size',v=>v,resegmentQ);
+bindRange('bands','bands',v=>v,restyleQ);bindRange('gamma','gamma',v=>v.toFixed(2),restyleQ);bindRange('ink','ink',v=>v.toFixed(2),restyleQ);bindRange('white','white',v=>v.toFixed(2),restyleQ);
+bindRange('pscale','pscale',v=>v.toFixed(2),restyleQ);bindRange('lw','lw',v=>v.toFixed(1),restyleQ);bindRange('jit','jit',v=>v.toFixed(2),restyleQ);
+bindRange('et','et',v=>v.toFixed(2),restyleQ);bindRange('ew','ew',v=>v.toFixed(1),restyleQ);bindRange('bw','bw',v=>v.toFixed(1),restyleQ);
+bindRange('seed','seed',v=>v,restyleQ);bindRange('ex','ex',v=>v+'×',null);
+bindRange('cellSeed','cellSeed',v=>v,resegmentQ);
 $('randSeed').addEventListener('click',()=>{
   const s=1+Math.floor(Math.random()*999),cs=1+Math.floor(Math.random()*999);
   P.seed=s;$('seed').value=s;$('v_seed').textContent=s;
   P.cellSeed=cs;$('cellSeed').value=cs;$('v_cellSeed').textContent=cs;
   resegment();
 });
-$('follow').addEventListener('change',e=>{P.follow=e.target.checked;resegment();});
-$('edges').addEventListener('change',e=>{P.edges=e.target.checked;restyle();});
-$('bounds').addEventListener('change',e=>{P.bounds=e.target.checked;restyle();});
-bindRange('hueSpan','hueSpan',v=>v,restyle);
-bindRange('imgMix','imgMix',v=>v.toFixed(2),restyle);
-bindRange('imgSat','imgSat',v=>v.toFixed(2),restyle);
+$('follow').addEventListener('change',e=>{P.follow=e.target.checked;resegmentQ();});
+$('edges').addEventListener('change',e=>{P.edges=e.target.checked;restyleQ();});
+$('bounds').addEventListener('change',e=>{P.bounds=e.target.checked;restyleQ();});
+bindRange('hueSpan','hueSpan',v=>v,restyleQ);
+bindRange('imgMix','imgMix',v=>v.toFixed(2),restyleQ);
+bindRange('imgSat','imgSat',v=>v.toFixed(2),restyleQ);
 function updateColorUI(){const m=P.colorMode;$('inkBwrap').style.display=(m==='tone')?'flex':'none';$('hueSpanRow').style.display=(m==='flow')?'block':'none';$('imageColorRows').style.display=(m==='image')?'block':'none';}
 $('colorMode').value=P.colorMode;updateColorUI();
-$('colorMode').addEventListener('change',e=>{P.colorMode=e.target.value;updateColorUI();restyle();});
-$('inkA').value=P.inkA;$('inkA').addEventListener('input',e=>{P.inkA=e.target.value;restyle();});
-$('inkB').value=P.inkB;$('inkB').addEventListener('input',e=>{P.inkB=e.target.value;restyle();});
-$('paper').value=P.paper;$('paper').addEventListener('input',e=>{P.paper=e.target.value;restyle();});
+$('colorMode').addEventListener('change',e=>{P.colorMode=e.target.value;updateColorUI();restyleQ();});
+$('inkA').value=P.inkA;$('inkA').addEventListener('input',e=>{P.inkA=e.target.value;restyleQ();});
+$('inkB').value=P.inkB;$('inkB').addEventListener('input',e=>{P.inkB=e.target.value;restyleQ();});
+$('paper').value=P.paper;$('paper').addEventListener('input',e=>{P.paper=e.target.value;restyleQ();});
 
-function fillPatGrid(grid,keys){const el=$(grid);keys.forEach(k=>{const l=document.createElement('label');l.className='chk';l.innerHTML=`<input type="checkbox" class="patchk" checked> ${NICE[k]||k}`;const inp=l.querySelector('input');inp.dataset.key=k;inp.addEventListener('change',e=>{P.enabled[k]=e.target.checked;restyle();});el.appendChild(l);});}
+function fillPatGrid(grid,keys){const el=$(grid);keys.forEach(k=>{const l=document.createElement('label');l.className='chk';l.innerHTML=`<input type="checkbox" class="patchk" checked> ${NICE[k]||k}`;const inp=l.querySelector('input');inp.dataset.key=k;inp.addEventListener('change',e=>{P.enabled[k]=e.target.checked;restyleQ();});el.appendChild(l);});}
 fillPatGrid('flowgrid',FLOW_KEYS);fillPatGrid('tilegrid',TILE_KEYS);
 function setGroup(keys,on){for(const k of keys)P.enabled[k]=on;document.querySelectorAll('.patchk').forEach(inp=>{if(keys.indexOf(inp.dataset.key)>=0)inp.checked=on;});restyle();}
 document.querySelectorAll('.subhd .mini').forEach(b=>b.addEventListener('click',()=>setGroup(b.dataset.grp==='flow'?FLOW_KEYS:TILE_KEYS,b.dataset.act==='all')));
@@ -598,8 +626,8 @@ const endStamp=()=>{if(!drawing)return;drawing=false;if(cur&&cur.length){P.custo
 window.addEventListener('pointerup',endStamp);window.addEventListener('pointercancel',endStamp);
 $('clearStamp').onclick=()=>{P.customStrokes=[];drawStampPreview();restyle();};
 $('undoStamp').onclick=()=>{P.customStrokes.pop();drawStampPreview();restyle();};
-$('en_custom').addEventListener('change',e=>{P.enabled.custom=e.target.checked;restyle();});
-$('customKind').addEventListener('change',e=>{P.customKind=e.target.value;restyle();});
+$('en_custom').addEventListener('change',e=>{P.enabled.custom=e.target.checked;restyleQ();});
+$('customKind').addEventListener('change',e=>{P.customKind=e.target.value;restyleQ();});
 drawStampPreview();
 
 // -------- manual cell editing --------
@@ -650,7 +678,7 @@ const endPaint=()=>{if(painting){painting=false;strokeSet=null;}};
 window.addEventListener('pointerup',endPaint);window.addEventListener('pointercancel',endPaint);
 
 $('reroll').onclick=$('reroll2').onclick=()=>{P.seed=(P.seed%999)+1;$('seed').value=P.seed;$('v_seed').textContent=P.seed;restyle();};
-$('regen').onclick=$('regen2').onclick=()=>segment();
+$('regen').onclick=$('regen2').onclick=()=>{pend.seg=pend.style=false;updatePending();segment();};
 $('save').onclick=exportPNG;
 $('loadBtn').onclick=()=>$('file').click();
 $('sampleBtn').onclick=()=>{srcImage=makeSample();if(srcImage.complete)segment();else srcImage.onload=()=>segment();};
@@ -678,7 +706,41 @@ window.Scrawlery={
 };
 
 $('sampleBtn').click();
+// -------- confirm-before-apply --------
+$('applyBtn').addEventListener('click',applyPending);
+$('confirmMode').checked=confirmMode;
+$('confirmMode').addEventListener('change',e=>{confirmMode=e.target.checked;try{localStorage.setItem('scrawlery.confirm',confirmMode?'1':'0');}catch(_){}
+  if(!confirmMode)applyPending();});
+window.addEventListener('keydown',e=>{if(e.key!=='Enter'||e.repeat||e.ctrlKey||e.metaKey||e.altKey)return;const t=e.target;
+  if(t&&((t.tagName==='BUTTON'&&!t.classList.contains('tab'))||t.tagName==='SELECT'||t.tagName==='TEXTAREA'||(t.tagName==='INPUT'&&t.type==='text')))return;
+  if(pend.seg||pend.style){e.preventDefault();applyPending();}});
+updatePending();
+
+// -------- phone layout: sections become tabs under the artwork --------
+(function(){
+  const mq=matchMedia('(max-width:760px), (max-height:500px) and (orientation:landscape)');
+  const groups=[...document.querySelectorAll('#ctrls > .grp')];
+  const label=g=>g.dataset.tab||(g.querySelector('.lbl')?.textContent||'').split('—')[0].trim();
+  // One tab can cover several small groups (Line quality + Structure lines → "Lines").
+  const tabs=[];
+  for(const g of groups){const name=label(g);
+    if(name==='Line quality'||name==='Structure lines'){let t=tabs.find(x=>x.name==='Lines');if(!t){t={name:'Lines',els:[]};tabs.push(t);}t.els.push(g);}
+    else tabs.push({name,els:[g]});}
+  const bar=document.createElement('nav');bar.id='tabbar';bar.setAttribute('role','tablist');
+  const ctrls=$('ctrls');ctrls.parentNode.insertBefore(bar,ctrls);
+  tabs.forEach((t,i)=>{const b=document.createElement('button');b.type='button';b.className='tab';b.textContent=t.name;b.setAttribute('role','tab');
+    b.addEventListener('click',()=>select(i));bar.appendChild(b);t.btn=b;});
+  let cur=0;try{const v=+localStorage.getItem('scrawlery.tab');if(v>=0&&v<tabs.length)cur=v;}catch(_){}
+  function select(i,scroll=true){cur=i;tabs.forEach((t,j)=>{const on=j===i;t.btn.classList.toggle('sel',on);t.btn.setAttribute('aria-selected',on);t.els.forEach(g=>g.classList.toggle('tabon',on));});
+    ctrls.scrollTop=0;if(scroll)tabs[i].btn.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'});
+    try{localStorage.setItem('scrawlery.tab',i);}catch(_){}}
+  const apply=()=>document.body.classList.toggle('tabbed',mq.matches);
+  if(mq.addEventListener)mq.addEventListener('change',apply);else mq.addListener(apply);
+  select(cur,false);apply();
 })();
+
+})();
+
 </script>
 </body>
 </html>
