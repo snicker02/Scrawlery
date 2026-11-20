@@ -72,6 +72,43 @@
   .toolrow button.sel{background:var(--accent);color:#1a1400;border-color:var(--accent);font-weight:600}
   .legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:9px;color:var(--dim);font-size:10px}
   .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+  /* touch: edit-mode painting on the artwork must not scroll the page */
+  #cvwrap.edit #cv{touch-action:none}
+  .touch-only{display:none}
+  @media (pointer:coarse){
+    .touch-only{display:inline}.mouse-only{display:none}
+    input[type=range]{height:28px;background:transparent;margin:0}
+    input[type=range]::-webkit-slider-runnable-track{height:3px;background:var(--line);border-radius:3px}
+    input[type=range]::-moz-range-track{height:3px;background:var(--line);border-radius:3px}
+    input[type=range]::-webkit-slider-thumb{width:22px;height:22px;margin-top:-9.5px}
+    input[type=range]::-moz-range-thumb{width:22px;height:22px}
+    button{min-height:40px}
+    .subhd .mini{min-height:28px;padding:2px 10px}
+    .chk{margin:10px 0}.chk input{width:20px;height:20px}
+    .patgrid .chk{margin:7px 0}
+    select{min-height:38px}
+  }
+  /* phones (portrait): artwork on top, controls scroll underneath */
+  @media (max-width:760px){
+    html,body{height:100%;height:100dvh}
+    body{flex-direction:column;height:100vh;height:100dvh}
+    #stage{order:0;flex:0 0 52%;min-height:0}
+    #panel{order:1;width:100%;flex:1 1 0;min-height:0;border-right:0;border-top:1px solid var(--line)}
+    #panel header{padding:8px 14px;display:flex;align-items:baseline;gap:10px}
+    #panel header p{margin:0}
+    #ctrls{padding:4px 14px calc(22px + env(safe-area-inset-bottom))}
+    #bar{height:auto;flex:0 0 auto;min-height:48px;padding:4px 8px;gap:6px}
+    #bar .status{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px}
+    #view{padding:10px}
+    #overlay .prog{width:min(220px,70vw)}
+  }
+  /* phones (landscape): narrower panel so the artwork keeps most of the screen */
+  @media (max-height:500px) and (orientation:landscape){
+    #panel{width:270px;flex-basis:270px}
+    #panel header{padding:8px 14px}
+    #panel header p{display:none}
+    #view{padding:8px}
+  }
 </style>
 </head>
 <body>
@@ -79,7 +116,7 @@
   <header><h1>Scrawlery</h1><p>flow-field line art from any image</p></header>
   <div id="ctrls">
     <div class="btnrow"><button id="loadBtn">Load image</button><button id="sampleBtn">Sample</button></div>
-    <div class="hint">Drag an image onto the canvas, or paste with ⌘V.</div>
+    <div class="hint"><span class="mouse-only">Drag an image onto the canvas, or paste with ⌘V.</span><span class="touch-only">Tap Load image to pick a photo or take one with the camera.</span></div>
 
     <div class="grp">
       <div class="lbl">Cells — the ribbons</div>
@@ -155,7 +192,7 @@
       <select id="customKind"><option value="tile">Repeat as a tile</option><option value="flow">Stamp along the flow</option></select>
       <div id="stampWrap"><canvas id="stamp" width="190" height="190"></canvas></div>
       <div class="btnrow"><button id="undoStamp">Undo</button><button id="clearStamp">Clear</button></div>
-      <div class="hint">Draw a small motif above (each mouse stroke is one line). It fills cells as a repeating tile, or gets stamped along the ribbons.</div>
+      <div class="hint">Draw a small motif above (each stroke is one line). It fills cells as a repeating tile, or gets stamped along the ribbons.</div>
     </div>
 
     <div class="grp">
@@ -173,7 +210,7 @@
         <div class="row" style="margin-top:10px"><div class="top"><label>Brush size</label><span class="val" id="v_brush">1 cell</span></div><input type="range" id="brush" min="0" max="60" step="2" value="0"></div>
         <div class="legend"><span><i style="background:#50b478"></i>tone</span><span><i style="background:#5096ff"></i>forced</span><span><i style="background:#966edc"></i>both</span><span><i style="background:#dc3c3c"></i>blank</span></div>
         <div class="btnrow"><button id="clearEdits">Clear all edits</button></div>
-        <div class="hint">Turn on, pick a tool, then click or drag across cells. Changing Detail / Ribbon stretch / Compactness / Working size re-segments and clears edits.</div>
+        <div class="hint">Turn on, pick a tool, then tap or drag across cells. Changing Detail / Ribbon stretch / Compactness / Working size re-segments and clears edits.</div>
       </div>
     </div>
 
@@ -557,7 +594,8 @@ function padPt(e){const r=stamp.getBoundingClientRect();const cxp=(e.touches?e.t
 function enableCustom(){P.enabled.custom=true;$('en_custom').checked=true;}
 stamp.addEventListener('pointerdown',e=>{e.preventDefault();drawing=true;cur=[padPt(e)];drawStampPreview(cur);});
 stamp.addEventListener('pointermove',e=>{if(!drawing)return;cur.push(padPt(e));drawStampPreview(cur);});
-window.addEventListener('pointerup',()=>{if(!drawing)return;drawing=false;if(cur&&cur.length){P.customStrokes.push(cur);enableCustom();}cur=null;drawStampPreview();restyle();});
+const endStamp=()=>{if(!drawing)return;drawing=false;if(cur&&cur.length){P.customStrokes.push(cur);enableCustom();}cur=null;drawStampPreview();restyle();};
+window.addEventListener('pointerup',endStamp);window.addEventListener('pointercancel',endStamp);
 $('clearStamp').onclick=()=>{P.customStrokes=[];drawStampPreview();restyle();};
 $('undoStamp').onclick=()=>{P.customStrokes.pop();drawStampPreview();restyle();};
 $('en_custom').addEventListener('change',e=>{P.enabled.custom=e.target.checked;restyle();});
@@ -608,7 +646,8 @@ $('clearEdits').onclick=()=>{P.overrides={};buildMarks();renderOverlay();if(seg)
 cv.addEventListener('pointerdown',e=>{if(!P.editMode)return;e.preventDefault();painting=true;strokeSet=new Set();const p=pointIxy(e.clientX,e.clientY);if(p){hoverIds=brushCells(p[0],p[1]);lastHoverSig=hoverIds.join(',');renderOverlay();paintFootprint(hoverIds);}});
 cv.addEventListener('pointermove',e=>{if(!P.editMode)return;const p=pointIxy(e.clientX,e.clientY),fp=p?brushCells(p[0],p[1]):[];const sig=fp.join(',');if(sig!==lastHoverSig){lastHoverSig=sig;hoverIds=fp;renderOverlay();}if(painting&&fp.length)paintFootprint(fp);});
 cv.addEventListener('pointerleave',()=>{if(P.editMode){hoverIds=[];lastHoverSig='';renderOverlay();}});
-window.addEventListener('pointerup',()=>{if(painting){painting=false;strokeSet=null;}});
+const endPaint=()=>{if(painting){painting=false;strokeSet=null;}};
+window.addEventListener('pointerup',endPaint);window.addEventListener('pointercancel',endPaint);
 
 $('reroll').onclick=$('reroll2').onclick=()=>{P.seed=(P.seed%999)+1;$('seed').value=P.seed;$('v_seed').textContent=P.seed;restyle();};
 $('regen').onclick=$('regen2').onclick=()=>segment();
