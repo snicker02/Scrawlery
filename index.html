@@ -247,7 +247,7 @@
 
 <div id="stage">
   <div id="bar">
-    <button id="applyBtn" disabled title="Apply pending changes (Enter)">Apply</button><button id="regen2">Regenerate</button><button id="reroll2">Re-roll</button>
+    <button id="applyBtn" disabled title="Apply pending changes (Enter)">Apply</button><button id="regen2">Regenerate</button><button id="reroll2">Re-roll</button><button id="shelfBtn" title="Shared image shelf: send this drawing to another snicker02 app, or load an image from it">⇄ Shelf</button>
     <div class="sp"></div>
     <div class="status" id="status">Load an image or hit <b>Sample</b> to begin.</div>
   </div>
@@ -259,6 +259,7 @@
 </div>
 <input type="file" id="file" accept="image/*">
 
+<script src="https://snicker02.github.io/shared/bridge.js"></script>
 <script>
 "use strict";
 (function(){
@@ -690,6 +691,20 @@ const view=$('view'),drop=$('drop');
 view.addEventListener('dragleave',e=>{if(e.target===view)drop.classList.remove('on');});
 view.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('on');const f=[...e.dataTransfer.files].find(f=>f.type.startsWith('image/'));if(f)loadFile(f);});
 window.addEventListener('paste',e=>{const it=[...e.clipboardData.items].find(i=>i.type.startsWith('image/'));if(it)loadFile(it.getAsFile());});
+
+// shared image shelf (snicker02.github.io/shared/bridge.js)
+if(window.SnickerShelf){
+  window.SnickerShelf.mount({
+    app:'Scrawlery',
+    button:$('shelfBtn'),
+    onImage:file=>loadFile(file),
+    getImage:()=>{
+      if(!seg)throw new Error('load an image first');
+      return new Promise((res,rej)=>$('cv').toBlob(b=>b?res(b):rej(new Error('encode failed')),'image/png'));
+    },
+    getMeta:()=>({name:'scrawlery.png'}),
+  });
+}else $('shelfBtn').hidden=true;
 
 // scripting API (draw motifs programmatically; each stroke is points in 0..1)
 window.Scrawlery={
